@@ -1,0 +1,24 @@
+Trademarks and third-party material
+
+The MIT license in LICENSE covers this repository's source code only.
+
+Trademarks. Dell, Dell Technologies and PowerEdge are trademarks of Dell Inc.
+or its subsidiaries. Intel and Xeon are trademarks of Intel Corporation or its
+subsidiaries. NVIDIA and RTX are trademarks of NVIDIA Corporation. Other names
+may be trademarks of their respective owners. The logos and product images in
+the replay page are included for presenting results about those products and
+are not licensed for other use.
+
+Fonts. Roboto is licensed under the SIL Open Font License 1.1.
+
+Bundled and downloaded components:
+- Lua 5.4.7 and its test suite (MIT License), bench/data/capacity/build
+- SQLite 3.50.4 amalgamation (public domain), bench/data/capacity/build
+- sentence-transformers/all-MiniLM-L6-v2 (Apache License 2.0), in the embedder image
+- cross-encoder/ms-marco-MiniLM-L6-v2 (Apache License 2.0), quantized in the bench image
+- Hugging Face Text Embeddings Inference (Apache License 2.0), the embedder image base
+- Python packages listed in bench/requirements.txt, under their own licenses
+
+Recorded model calls. calibration/profile-gpt-oss-20b.jsonl holds call
+positions, latencies and token counts recorded against gpt-oss-20b. It holds
+no prompt or response text.

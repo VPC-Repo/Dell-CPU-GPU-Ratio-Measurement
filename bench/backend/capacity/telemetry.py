@@ -1,0 +1,363 @@
+"""
+System telemetry for the capacity test — stdlib-only readers over /proc and RAPL.
+
+Everything is best-effort: on a box without a given source (RAPL is often
+root-only; macOS dev machines have no /proc) the reading is simply None and the
+UI shows a dash. Pure parse functions are separated from I/O so they unit-test
+offline with canned file contents.
+"""
+from __future__ import annotations
+
+import glob
+import os
+import time
+
+
+# ── pure parsers (unit-testable) ─────────────────────────────────────────────
+
+def parse_proc_stat(text: str) -> tuple[int, int] | None:
+    """First 'cpu ' line -> (busy_jiffies, total_jiffies)."""
+    for line in text.splitlines():
+        if line.startswith("cpu "):
+            parts = [int(x) for x in line.split()[1:]]
+            if len(parts) < 5:
+                return None
+            idle = parts[3] + (parts[4] if len(parts) > 4 else 0)  # idle + iowait
+            total = sum(parts)
+            return total - idle, total
+    return None
+
+
+def cpu_pct_from(prev: tuple[int, int], cur: tuple[int, int]) -> float | None:
+    dbusy, dtotal = cur[0] - prev[0], cur[1] - prev[1]
+    if dtotal <= 0:
+        return None
+    return round(100.0 * dbusy / dtotal, 1)
+
+
+def parse_meminfo(text: str) -> tuple[float, float] | None:
+    """-> (used_gb, used_pct) from MemTotal/MemAvailable."""
+    vals: dict[str, int] = {}
+    for line in text.splitlines():
+        if line.startswith(("MemTotal:", "MemAvailable:")):
+            vals[line.split(":")[0]] = int(line.split()[1])  # kB
+    if "MemTotal" not in vals or "MemAvailable" not in vals or not vals["MemTotal"]:
+        return None
+    used_kb = vals["MemTotal"] - vals["MemAvailable"]
+    return round(used_kb / 1048576, 1), round(100.0 * used_kb / vals["MemTotal"], 1)
+
+
+# ── samplers (I/O) ───────────────────────────────────────────────────────────
+
+class SystemSampler:
+    """Call sample() periodically; returns a dict of best-effort readings.
+
+    CPU% and power are deltas, so the first sample returns None for both.
+    """
+
+    def __init__(self):
+        self._prev_stat: tuple[int, int] | None = None
+        self._prev_energy: tuple[float, float] | None = None  # (uj_total, ts)
+        self._rapl_paths = sorted(glob.glob("/sys/class/powercap/intel-rapl:?/energy_uj"))
+
+    def _read_energy_uj(self) -> float | None:
+        if not self._rapl_paths:
+            return None
+        total = 0.0
+        try:
+            for p in self._rapl_paths:
+                with open(p) as f:
+                    total += float(f.read().strip())
+            return total
+        except OSError:
+            return None  # typically EACCES for non-root
+
+    def sample(self) -> dict:
+        now = time.time()
+        out: dict = {"ts": now, "cpu_pct": None, "mem_gb": None, "mem_pct": None,
+                     "load1": None, "power_w": None}
+        try:
+            out["load1"] = round(os.getloadavg()[0], 2)
+        except OSError:
+            pass
+        try:
+            with open("/proc/stat") as f:
+                cur = parse_proc_stat(f.read())
+            if cur:
+                if self._prev_stat:
+                    out["cpu_pct"] = cpu_pct_from(self._prev_stat, cur)
+                self._prev_stat = cur
+        except OSError:
+            pass
+        try:
+            with open("/proc/meminfo") as f:
+                mem = parse_meminfo(f.read())
+            if mem:
+                out["mem_gb"], out["mem_pct"] = mem
+        except OSError:
+            pass
+        uj = self._read_energy_uj()
+        if uj is not None:
+            if self._prev_energy:
+                prev_uj, prev_ts = self._prev_energy
+                duj, dt = uj - prev_uj, now - prev_ts
+                if dt > 0 and duj >= 0:  # counter can wrap; skip that sample
+                    out["power_w"] = round(duj / dt / 1_000_000, 1)
+            self._prev_energy = (uj, now)
+        return out
+
+
+# ── memory bandwidth (perf uncore IMC) + engine KV utilization ────────────────
+# Both best-effort with pure parsers, same as above. Bandwidth needs `perf` and
+# uncore access (kernel.perf_event_paranoid <= 0 or CAP_PERFMON); KV utilization
+# needs the SGLang engine launched with --enable-metrics (ensure-local-llm.sh
+# does). Absent either, the reading is None and the UI shows a dash.
+
+def parse_perf_cas_mib(text: str) -> float | None:
+    """Sum MiB from `perf stat -x,` CSV lines for cas_count_read/write.
+
+    Line shape: value,unit,event,run_time,pct,... — value may be '<not supported>'.
+    """
+    total = 0.0
+    seen = False
+    for line in text.splitlines():
+        parts = line.split(",")
+        if len(parts) < 3 or "cas_count" not in parts[2]:
+            continue
+        try:
+            total += float(parts[0])
+            seen = True
+        except ValueError:
+            continue  # <not counted> / <not supported>
+    return total if seen else None
+
+
+def parse_sglang_token_usage(text: str) -> float | None:
+    """Extract SGLang's KV-pool utilization (0..1) from its /metrics page -> pct."""
+    import re
+    m = re.search(r"sglang:token_usage(?:\{[^}]*\})?\s+([0-9.eE+-]+)", text)
+    if not m:
+        return None
+    try:
+        return round(float(m.group(1)) * 100.0, 1)
+    except ValueError:
+        return None
+
+
+def mem_slope_mb_per_user(samples: list[dict]) -> float | None:
+    """Least-squares slope of memory (MB) vs virtual users over the ramp — the
+    measured marginal memory cost of one more agent."""
+    pts = [(s["users"], s["mem_gb"] * 1024) for s in samples
+           if s.get("mem_gb") is not None and s.get("users") is not None]
+    if len({u for u, _ in pts}) < 3:
+        return None
+    n = len(pts)
+    sx = sum(u for u, _ in pts); sy = sum(m for _, m in pts)
+    sxx = sum(u * u for u, _ in pts); sxy = sum(u * m for u, m in pts)
+    denom = n * sxx - sx * sx
+    if denom == 0:
+        return None
+    return round((n * sxy - sx * sy) / denom, 1)
+
+
+async def sample_bandwidth_gbs(duration: float = 1.0) -> float | None:
+    """Measure DRAM bandwidth over `duration` seconds via uncore IMC CAS counts."""
+    import asyncio
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "perf", "stat", "-a", "-x,",
+            "-e", "uncore_imc/cas_count_read/,uncore_imc/cas_count_write/",
+            "sleep", str(duration),
+            stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.PIPE,
+        )
+        _, err = await asyncio.wait_for(proc.communicate(), timeout=duration + 5)
+    except (FileNotFoundError, asyncio.TimeoutError, OSError):
+        return None
+    mib = parse_perf_cas_mib(err.decode(errors="replace"))
+    if mib is None:
+        return None
+    return round(mib / duration / 1024, 1)
+
+
+async def sample_kv_pct(base_url: str) -> float | None:
+    """Scrape the local engine's KV utilization from its Prometheus /metrics."""
+    import httpx
+    root = base_url.rstrip("/").removesuffix("/v1")
+    try:
+        async with httpx.AsyncClient(timeout=2.0) as http:
+            r = await http.get(f"{root}/metrics")
+        if r.status_code != 200:
+            return None
+        return parse_sglang_token_usage(r.text)
+    except Exception:  # noqa: BLE001
+        return None
+
+
+# ── per-component CPU attribution ────────────────────────────────────────────
+# "Where does the CPU go?" — host cpu_pct says the box is busy; this says WHO:
+# the control plane, the executor pool, the mock router, the inference engine,
+# or everything else on the machine. Percentages share the host cpu_pct basis
+# (100% = the whole box), so the components stack under the host line.
+
+def _read_proc_stat_total() -> int | None:
+    """Total jiffies across all CPUs from /proc/stat (None when unreadable)."""
+    try:
+        with open("/proc/stat") as f:
+            stat = parse_proc_stat(f.read())
+    except OSError:
+        return None
+    return None if stat is None else stat[1]
+
+
+def _proc_jiffies(pid: int) -> int | None:
+    """utime+stime for one pid (fields 14/15 of /proc/<pid>/stat)."""
+    try:
+        with open(f"/proc/{pid}/stat") as f:
+            parts = f.read().rsplit(")", 1)[1].split()  # comm may contain spaces
+        return int(parts[11]) + int(parts[12])
+    except (OSError, IndexError, ValueError):
+        return None
+
+
+def _proc_child_jiffies(pid: int) -> int | None:
+    """cutime+cstime for one pid (fields 16/17): CPU of its REAPED children.
+    Short-lived children (sandboxed jobs, ~1.5 s) never survive a process
+    scan, but their CPU lands here when the parent reaps them."""
+    try:
+        with open(f"/proc/{pid}/stat") as f:
+            parts = f.read().rsplit(")", 1)[1].split()
+        return int(parts[13]) + int(parts[14])
+    except (OSError, IndexError, ValueError):
+        return None
+
+
+def find_pids(pattern: str) -> list[int]:
+    """Pids whose /proc cmdline OR comm contains the pattern.
+
+    comm matters as much as cmdline: a process that renames itself keeps a
+    cmdline that no longer describes how it was launched. SGLang's scheduler
+    — the process that does the actual inference work, measured at 6269% CPU
+    on a 128-core host — renames to 'sglang::scheduler' and was invisible to
+    a cmdline-only scan for 'sglang.launch_server'. Its ~49% of the host
+    landed in the residual bucket, one CPU-target crossing away from being
+    reported as other tenants interfering with the benchmark.
+    """
+    needle = pattern.encode()
+    out = []
+    for d in glob.glob("/proc/[0-9]*"):
+        try:
+            with open(f"{d}/cmdline", "rb") as f:
+                hit = needle in f.read()
+            if not hit:
+                with open(f"{d}/comm", "rb") as f:
+                    hit = needle in f.read()
+            if hit:
+                out.append(int(d.rsplit("/", 1)[1]))
+        except (OSError, ValueError):
+            continue
+    return out
+
+
+def process_tree_pids(pattern: str) -> list[int]:
+    """Every pid matching the pattern, plus all their descendants.
+
+    Belt and braces for multi-process engines: match catches renamed
+    workers, descent catches workers that match nothing at all.
+    """
+    seed = find_pids(pattern)
+    out: set[int] = set(seed)
+    for pid in seed:
+        out.update(descendant_pids(pid))
+    return sorted(out)
+
+
+def descendant_pids(pid: int) -> list[int]:
+    """Return pid and every live descendant using Linux /proc parent links."""
+    children: dict[int, list[int]] = {}
+    for path in glob.glob("/proc/[0-9]*/status"):
+        try:
+            child = int(path.split("/")[2])
+            parent = None
+            with open(path) as f:
+                for line in f:
+                    if line.startswith("PPid:"):
+                        parent = int(line.split()[1])
+                        break
+            if parent is not None:
+                children.setdefault(parent, []).append(child)
+        except (OSError, ValueError, IndexError):
+            continue
+    out, stack, seen = [], [int(pid)], set()
+    while stack:
+        cur = stack.pop()
+        if cur in seen:
+            continue
+        seen.add(cur)
+        out.append(cur)
+        stack.extend(children.get(cur, []))
+    return out
+
+
+class ProcessCpuSampler:
+    """Delta-based CPU% for named pid groups, on the whole-host basis.
+
+    groups: {name: [pids]} — re-supplied each sample so late-started
+    components (engine, mock router) join when they appear. First sample
+    returns None (no delta yet), like the host CPU reading.
+    """
+
+    def __init__(self):
+        self._prev: dict[int, int] = {}
+        self._prev_child: dict[int, int] = {}
+        self._prev_total: int | None = None
+
+    def sample(self, groups: dict[str, list[int]],
+               children_of: dict[str, list[int]] | None = None,
+               spread_of: tuple[str, ...] = ()) -> dict[str, float] | None:
+        """children_of: {name: [parent pids]} adds groups charged with the
+        CPU of those parents' reaped children (the sandboxed jobs of the
+        executors), which a pid scan cannot see.
+
+        spread_of: group names whose per-process distribution is reported
+        too, as `<name>_spread` = {n, min, p50, max} in percent of ONE
+        hardware thread, so an uneven pool (one hot executor among 28 idle
+        ones) is visible where a group total hides it."""
+        total = _read_proc_stat_total()
+        if total is None:
+            return None
+        cur: dict[int, int] = {}
+        for pids in groups.values():
+            for pid in pids:
+                j = _proc_jiffies(pid)
+                if j is not None:
+                    cur[pid] = j
+        curc: dict[int, int] = {}
+        for pids in (children_of or {}).values():
+            for pid in pids:
+                j = _proc_child_jiffies(pid)
+                if j is not None:
+                    curc[pid] = j
+        out: dict[str, float] | None = None
+        if self._prev_total is not None and total > self._prev_total:
+            dtotal = total - self._prev_total   # spans ALL cores, same basis as cpu_pct
+            out = {}
+            for name, pids in groups.items():
+                dj = sum(max(0, cur.get(p, 0) - self._prev.get(p, cur.get(p, 0)))
+                         for p in pids if p in cur)
+                out[name] = round(100.0 * dj / dtotal, 1)
+            for name, pids in (children_of or {}).items():
+                dj = sum(max(0, curc.get(p, 0) - self._prev_child.get(p, curc.get(p, 0)))
+                         for p in pids if p in curc)
+                out[name] = round(out.get(name, 0.0) + 100.0 * dj / dtotal, 1)
+            ncpu = os.cpu_count() or 1
+            for name in spread_of:
+                per = sorted(100.0 * ncpu * max(0, cur[p] - self._prev.get(p, cur[p])) / dtotal
+                             for p in groups.get(name, []) if p in cur and p in self._prev)
+                if per:
+                    out[f"{name}_spread"] = {"n": len(per), "min": round(per[0], 1),
+                                             "p50": round(per[len(per) // 2], 1),
+                                             "max": round(per[-1], 1)}
+        self._prev = cur
+        self._prev_child = curc
+        self._prev_total = total
+        return out

@@ -1,0 +1,370 @@
+# Synthetic agent scenarios for inference-engine capacity planning.
+# The publication benchmark uses `e2e_workflows`, `e2e_tile` and `e2e_tiles`
+# below: five agent archetypes at production sizes in three organisation
+# tiles. This older synthetic family remains available for engine-load testing.
+#
+# Every scenario is a genuine agent loop (no chatbot pings): tools are called
+# and their results injected into context, later steps re-read what earlier
+# steps produced, and sessions compound across turns where the real workflow
+# is conversational. That growing-prefill / resident-KV behavior is what makes
+# agent capacity different from chat capacity — and is what this test measures.
+#
+# Step fields:
+#   carry_context: true   prompt includes everything accumulated this turn
+#   tool_calls: N         N tool round-trips: the virtual session waits out
+#                         tool_latency_ms, injects tool_result_tokens into
+#                         context, and calls again — every tool call is an extra
+#                         LLM continuation. (Whether the engine retains KV/prefix
+#                         state across the wait is engine policy; the measured
+#                         KV gauge is the source of truth, not this simulation.)
+# Scenario fields:
+#   session_turns: K      context compounds across K loops (a user session or
+#                         ticket conversation), then resets; context_cap bounds it
+
+# The synthetic reference tile contains six archetypes and seven virtual users.
+# Capacity ramps add one complete tile at a time so every rung keeps the same
+# workload mix. This tile does not define the publication benchmark.
+tile:
+  support_agent: 2
+  doc_intelligence: 1
+  code_agent: 1
+  research_agent: 1
+  ops_analyst: 1
+  deep_agent: 1
+
+# Bump when scenario/tile semantics change — part of every result's repro block.
+version: 17
+
+scenarios:
+  support_agent:
+    name: "Customer support agent"
+    blurb: "Pulls the customer record and KB articles, then answers within a running ticket conversation that compounds over 4 turns."
+    complexity: light
+    think_ms: 1500
+    session_turns: 4
+    context_cap: 5000
+    steps:
+      - {label: "triage+lookup", prompt_tokens: 250, max_tokens: 150,
+         tool_calls: 2, tool_result_tokens: 500, tool_latency_ms: 350}
+      - {label: "respond", prompt_tokens: 150, max_tokens: 300, carry_context: true}
+
+  doc_intelligence:
+    name: "Document intelligence"
+    blurb: "Retrieves two large document chunks, extracts the key data over them, then composes a structured summary — data-inclusion prefill at its heaviest."
+    complexity: medium
+    think_ms: 1500
+    session_turns: 1
+    context_cap: 8000
+    steps:
+      - {label: "ingest", prompt_tokens: 300, max_tokens: 200,
+         tool_calls: 2, tool_result_tokens: 1500, tool_latency_ms: 400}
+      - {label: "extract", prompt_tokens: 200, max_tokens: 300, carry_context: true}
+      - {label: "summarize", prompt_tokens: 200, max_tokens: 300, carry_context: true}
+
+  code_agent:
+    name: "Coding agent (fix loop)"
+    blurb: "Writes code, runs the tests in a sandbox, fixes with the failure output in context, re-runs to verify — the classic agentic fix loop over a 2-turn session."
+    complexity: medium
+    think_ms: 1200
+    session_turns: 2
+    context_cap: 6000
+    steps:
+      - {label: "implement", prompt_tokens: 400, max_tokens: 500}
+      - {label: "test+fix", prompt_tokens: 150, max_tokens: 300,
+         carry_context: true, tool_calls: 1, tool_result_tokens: 250, tool_latency_ms: 700}
+      - {label: "verify", prompt_tokens: 100, max_tokens: 150,
+         carry_context: true, tool_calls: 1, tool_result_tokens: 150, tool_latency_ms: 700}
+
+  research_agent:
+    name: "Research agent"
+    blurb: "Two web searches injected into context, analysis over the findings, then a brief written over everything gathered — compounding context each step."
+    complexity: medium
+    think_ms: 1500
+    session_turns: 2
+    context_cap: 6000
+    steps:
+      - {label: "gather", prompt_tokens: 300, max_tokens: 350,
+         tool_calls: 2, tool_result_tokens: 600, tool_latency_ms: 500}
+      - {label: "analyze", prompt_tokens: 300, max_tokens: 300, carry_context: true}
+      - {label: "write", prompt_tokens: 250, max_tokens: 400, carry_context: true}
+
+  ops_analyst:
+    name: "Ops / BI analyst agent"
+    blurb: "Runs two database queries, interprets the result sets in context, and writes the digest — the scheduled monitoring agent pattern."
+    complexity: medium
+    think_ms: 2000
+    session_turns: 1
+    context_cap: 6000
+    steps:
+      - {label: "query", prompt_tokens: 350, max_tokens: 200,
+         tool_calls: 2, tool_result_tokens: 800, tool_latency_ms: 600}
+      - {label: "interpret", prompt_tokens: 200, max_tokens: 300, carry_context: true}
+      - {label: "report", prompt_tokens: 150, max_tokens: 350, carry_context: true}
+
+  deep_agent:
+    name: "Deep multi-agent pipeline"
+    blurb: "Plan, three tool-using workers, synthesis over all results — the full orchestration pattern, session compounding over 3 turns."
+    complexity: heavy
+    think_ms: 2000
+    session_turns: 3
+    context_cap: 6000
+    steps:
+      - {label: "plan", prompt_tokens: 500, max_tokens: 250}
+      - {label: "worker-1", prompt_tokens: 300, max_tokens: 300,
+         carry_context: true, tool_calls: 1, tool_result_tokens: 300, tool_latency_ms: 400}
+      - {label: "worker-2", prompt_tokens: 300, max_tokens: 300,
+         carry_context: true, tool_calls: 1, tool_result_tokens: 300, tool_latency_ms: 400}
+      - {label: "worker-3", prompt_tokens: 300, max_tokens: 300,
+         carry_context: true, tool_calls: 1, tool_result_tokens: 300, tool_latency_ms: 400}
+      - {label: "synthesize", prompt_tokens: 400, max_tokens: 450, carry_context: true}
+
+# ── End-to-end agent-runtime mode ─────────────────────────────────────────────
+# These are REAL workflows submitted through the orchestrator (planner, workers,
+# validation, synthesis) — the truth test behind the synthetic traces. Lower
+# scale by nature: one "call" = one complete workflow. Determinism comes from
+# the router the app is configured with (mock router => fully deterministic).
+# The default tile is the enterprise tile; CAPACITY_E2E_TILE selects one of
+# the named tiles below and rides the run fingerprint.
+e2e_tile:
+  code_agent: 2
+  analyst_large: 2
+  deep_research: 1
+  ingestion: 1
+  task_ticket: 6
+
+e2e_tiles:
+  # Three organisation-shaped tiles of twelve sessions from the five
+  # archetypes: task agent (task_ticket), research agent (deep_research:
+  # fetch, nine retrievals at depth 128), data analyst at 100M rows with
+  # a period-over-period pass (analyst_large), code agent (setup, CI,
+  # verify), ingestion agent (OCR intake). Small agents dominate by
+  # count; the compute-carrying archetypes set the host work per token.
+  enterprise:          # a technology-forward company: two coders, two analysts in twelve
+    code_agent: 2
+    analyst_large: 2
+    deep_research: 1
+    ingestion: 1
+    task_ticket: 6
+  engineering:         # an engineering organisation
+    code_agent: 3
+    analyst_large: 1
+    deep_research: 1
+    task_ticket: 7
+  analytics:           # a data and research organisation
+    analyst_large: 3
+    ingestion: 1
+    deep_research: 2
+    task_ticket: 6
+
+
+# AGENT DEADLINE TIERS. The weigh-in measures a machine's median workflow
+# time at one tile, that median places it in a tier, and the tier's deadline
+# is what its agents are held to. Six tiers span every agent host we expect
+# to test; the last has no ceiling, so no system is ever excluded.
+#
+# Each tier's deadline is ~3x its median ceiling: a machine at the top of its
+# tier may degrade 3x under load before missing, and a slower machine gets
+# proportionately more time because slower work is work someone is waiting on
+# less urgently. Tier names describe the USE CASE the deadline serves.
+#
+# CHARACTERIZATION PHASE: these boundaries are a reasoned starting point, not
+# settled categories. dellr470 is the anchor system (see repro provenance);
+# boundaries will be revised in a later workload version once several servers
+# have been characterized, with the anchor lineage recorded.
+service_tiers:
+  - {name: conversational, max_median_s: 5,   deadline_s: 15}    # answer in-line
+  - {name: interactive,    max_median_s: 15,  deadline_s: 45}    # a person waiting
+  - {name: responsive,     max_median_s: 50,  deadline_s: 150}   # a person nearby
+  - {name: attended,       max_median_s: 150, deadline_s: 450}   # checked on
+  - {name: queued,         max_median_s: 400, deadline_s: 1200}  # submitted, not watched
+  - {name: background,                        deadline_s: 3600}  # catch-all, no ceiling
+
+# Weigh-in protocol (frozen with the workload): median of `samples_per_type`
+# completions per workflow type at one tile. The WORST type's median places
+# the machine — one fast workflow must not carry a slow one into a deadline
+# it cannot meet. Expiry of max_s means too few completions landed to measure
+# the machine at all, which is an evidence statement, not an exclusion.
+weigh_in:
+  samples_per_type: 4
+  max_s: 1800
+
+# Open-loop offered-rate ramp (workflows per second), used by the capacity test.
+arrival_schedule:
+  start_rate: 2.0
+  step_factor: 1.4        # geometric while the backlog stays flat
+  max_rate: 4000.0
+  hold_s: 45              # dwell per rate level, evaluated for backlog growth
+  max_backlog: 20000      # bounded queue: past this the generator records a rejection
+
+# End-to-end workflows are FIXED-SIZE, SELF-CONTAINED work units. All source
+# material rides inside the prompt — no web research, no external tools — so a
+# workflow's size cannot depend on tool availability or the model's appetite,
+# and results are attributable to the inference + orchestration under test.
+# Budgets are part of the workload definition (and the scenario fingerprint):
+# a workflow that hits its budget did NOT complete the unit and counts as a
+# failure, exactly like a timeout. think_ms is the MEAN think time: each
+# session applies seeded +/-25% jitter so ramp batches cannot phase-lock into
+# workload pulses (part of the workload definition; deterministic per seed).
+#
+# The service ladder declares the CAPABILITY rungs. Each rung is a USE CASE
+# with the deadline that use case tolerates — a fact about the work and the
+# person or pipeline waiting on it, never about any machine. Rungs are frozen
+# with this workload version. A weigh-in before the ramp measures each type's
+# median latency at one tile and assigns the TIGHTEST rung the host is
+# eligible for (worst-type median <= margin x rung deadline). A host whose
+# weigh-in fits no rung is UNCLASSIFIABLE for this workload, which is a
+# publishable verdict, not an error. Capability is then the largest session
+# level where every workflow type meets the assigned rung's deadline at the
+# joint confidence target, and every other rung is reported as an observed
+# overlay from the same data. Class and number are inseparable in reporting.
+#
+# arrival_schedule drives the open-loop CAPACITY test. Offered rate is global;
+# the mix of types at any rate follows the same tile rotation the capability
+# test uses, so the two metrics measure the same workload.
+#
+# contract / contract_live declare the shape a COMPLETED unit must have. The
+# deterministic mock planner produces exactly 3 subtasks, 3 steps, 10 model
+# calls and 7 validations, so contract holds it to that; contract_live gives a
+# real planner the range its guardrails allow. A unit outside its contract is
+# workload-invalid: it counts as neither a success nor a capacity failure, and
+# enough of them invalidate the run.
+e2e_workflows:
+  task_ticket:
+    name: "Task agent: one ticket (e2e)"
+    think_ms: 3000
+    # The task agent (v2.3 shape): one planner turn delegates, ONE
+    # general-purpose worker looks the ticket up in the knowledge base
+    # (one retrieval at rerank depth 32, host work inside its record
+    # step, no model turn), writes one durable record and answers; the
+    # worker's answer is judged once and IS the deliverable: the runtime
+    # hands it back (handoff true) with only the mechanical check on it
+    # (grade_synthesis false), so no model call re-drafts it. Born, does
+    # one thing, dies - the shape of most agents in a deployment
+    # (triggers, routing, extraction), and of a routed ticket agent in
+    # particular.
+    toolless: true
+    grade_synthesis: false
+    handoff: true
+    tools: [bench_record]
+    contract: {task_count: [1, 1], steps: [1, 1], llm_calls: [3, 3], validations: [2, 2], tool_calls: [1, 1], tokens_in: [300, 40000]}
+    contract_live: {task_count: [1, 2], steps: [1, 2], llm_calls: [2, 20], validations: [0, 10], tool_calls: [0, 4]}
+    budgets: {max_subagents: 2, max_tool_hops: 2}
+    query: >-
+      Handle this single support ticket (do not research further): a customer
+      reports that scheduled exports stopped arriving after they changed
+      their workspace timezone yesterday; exports run at 02:00 local time
+      and the last one landed at the old time. Classify the ticket
+      (category and severity), decide whether it is a defect or a
+      configuration change, and write the customer reply. Plan EXACTLY one
+      worker subtask and no more. The worker calls bench_record exactly
+      once, which looks the ticket up in the knowledge base and files the
+      ticket record, then writes the classification and the reply and
+      stops. The worker's answer is the deliverable. Deliverable: category, severity, root cause in
+      one line, and a three-sentence reply.
+  code_agent:
+    name: "Code agent: build and test (e2e, heavy mix)"
+    think_ms: 3000
+    # Three workers: each searches the codebase and its documentation
+    # (one retrieval at rerank depth 64, host work inside its execute
+    # step) and runs its CI step in the sandbox
+    # (backend/capacity/sandbox_build_job.py: setup, ci, verify), then
+    # records. The verifier is the test result.
+    toolless: true
+    tools: [bench_execute, bench_record]
+    contract: {task_count: [3, 3], steps: [3, 3], llm_calls: [13, 13], validations: [7, 7], tool_calls: [6, 6], tokens_in: [6000, 200000]}
+    contract_live: {task_count: [1, 5], steps: [1, 5], llm_calls: [4, 60], validations: [0, 40], tool_calls: [0, 12]}
+    budgets: {max_subagents: 4, max_tool_hops: 3}
+    query: >-
+      Using ONLY the build available through the execution tool (do not
+      research further), take the interpreter and its embedded database
+      through the change: build the tree and run the test suite, fix what
+      fails, and confirm the tests. Plan EXACTLY three worker subtasks and no more: research
+      (build the baseline and read the failures), analysis (make the
+      change and rebuild), and writing (the change note). Each worker
+      runs bench_execute exactly once, which searches the codebase and
+      its documentation before the build, and then bench_record exactly
+      once, then writes its section and stops. Deliverable: the build result, the
+      test counts, and a change note.
+  deep_research:
+    name: "Deep research brief (e2e, heavy mix)"
+    think_ms: 3000
+    # The research brief with nine retrievals at rerank depth 128, three
+    # per worker in its one retrieval step: the cross-encoder scores 128
+    # candidates per query on the reranker's pair law.
+    toolless: true
+    # Each worker first fetches and parses its share of the source pages in
+    # the sandbox (sandbox_fetch_job.py: boilerplate removal, main-text
+    # extraction over 30 HTML pages), then retrieves (three queries at
+    # depth 128 in one step), then records: three tool calls per worker.
+    tools: [bench_execute, bench_retrieve, bench_record]
+    contract: {task_count: [3, 3], steps: [3, 3], llm_calls: [16, 16], validations: [7, 7], tool_calls: [9, 9], tokens_in: [20000, 500000]}
+    contract_live: {task_count: [1, 5], steps: [1, 5], llm_calls: [4, 60], validations: [0, 40], tool_calls: [0, 12]}
+    budgets: {max_subagents: 4, max_tool_hops: 3}
+    query: >-
+      Using ONLY the field notes below (do not research further), first
+      fetch the source pages available through the execution tool, then
+      retrieving at rerank depth 128, write a one-page brief on capacity
+      planning for agent hosts with a clear recommendation. Field notes:
+      (1) an orchestration host's cost per workflow is set by the tool
+      work its agents do, not by the model calls they make. (2) Reranking
+      cost is linear in candidates per call; depth 16 costs a quarter of
+      depth 64. (3) Sandboxed execution dominates the host at analyst-heavy
+      mixes. (4) The serving tier's tokens per second decide how many
+      hosts one accelerator needs. Plan EXACTLY three worker subtasks and
+      no more: research, analysis, and writing. Each worker runs
+      bench_execute exactly once, then bench_retrieve exactly once (three
+      queries in that step), then bench_record exactly once, then writes
+      its section and stops.
+      Deliverable: a brief with sections for findings, trade-offs, and one
+      recommendation.
+  ingestion:
+    name: "Ingestion agent: parse, embed, index (e2e, heavy mix)"
+    think_ms: 3000
+    # One worker parses a seeded selection of 100 PDF pages in the sandbox
+    # (sandbox_ingest_job.py), then the executor embeds the chunks on the
+    # CPU embedder and indexes them (toolbox.bench_execute, kind ingest),
+    # records, and writes the ingest summary.
+    toolless: true
+    tools: [bench_execute, bench_record]
+    # One worker with two tool calls (execute, then record) is five model
+    # calls: the task ticket's four plus one for the extra tool result.
+    contract: {task_count: [1, 1], steps: [1, 1], llm_calls: [5, 5], validations: [3, 3], tool_calls: [2, 2], tokens_in: [300, 40000]}
+    contract_live: {task_count: [1, 2], steps: [1, 2], llm_calls: [2, 20], validations: [0, 10], tool_calls: [0, 6]}
+    budgets: {max_subagents: 2, max_tool_hops: 3}
+    query: >-
+      Using ONLY the document set available through the execution tool (do
+      not research further), ingest the newly arrived reports: parse the
+      pages, chunk and de-duplicate the text, embed the chunks, and index
+      them for search, then confirm the index answers a query. Plan EXACTLY
+      one worker subtask and no more. The worker runs bench_execute exactly
+      once and then bench_record exactly once, then writes the ingest
+      summary and stops. Deliverable: pages parsed, chunks indexed, and the
+      top hit for the check query.
+  analyst_large:
+    name: "Data analysis pipeline, large (e2e, enterprise mix)"
+    think_ms: 3000
+    # The data analyst with its three jobs at 100M rows each (a week of
+    # events; about 47 core-s per job); the analysis worker's job runs over
+    # two periods, this week and the previous, and reports the change. The
+    # research and analysis workers each pull schema and metric
+    # definitions first (one retrieval at rerank depth 64, host work
+    # inside the execute step).
+    toolless: true
+    tools: [bench_execute, bench_record]
+    contract: {task_count: [3, 3], steps: [3, 3], llm_calls: [13, 13], validations: [7, 7], tool_calls: [6, 6], tokens_in: [6000, 200000]}
+    contract_live: {task_count: [1, 5], steps: [1, 5], llm_calls: [4, 60], validations: [0, 40], tool_calls: [0, 12]}
+    budgets: {max_subagents: 4, max_tool_hops: 3}
+    query: >-
+      Using ONLY the dataset (L) available through the execution tool (do
+      not research further), analyze one week of service events for a
+      payments platform: per-merchant volume and value, the hourly load
+      profile, the value distribution and its tail, and anomalous
+      merchants. Plan EXACTLY three worker subtasks and no more: research
+      (profile the data), analysis (rank and explain the anomalies), and
+      writing (the report). Each worker runs bench_execute exactly once
+      (the research and analysis workers' jobs pull the schema and metric
+      definitions first) and then bench_record exactly once, then writes
+      its section and stops.
+      Deliverable: a summary table of the top merchants, the peak hour with
+      its load, the p95 and p99 transaction values, and a list of anomalies
+      with a one-line explanation each.

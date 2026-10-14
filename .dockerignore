@@ -1,0 +1,9 @@
+**/.venv
+**/__pycache__
+**/.pytest_cache
+bench/data/*
+!bench/data/capacity
+bench/data/capacity/build/src
+bench/data/capacity/build/.extract.lock
+data
+.git

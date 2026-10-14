@@ -1,0 +1,228 @@
+:root{color-scheme:light dark;--page:light-dark(#eef4f8,#081c2e);--panel:light-dark(#fff,#123047);--ink:light-dark(#173349,#f0f7fc);--muted:light-dark(#486577,#bbd1df);--edge:light-dark(#d4e1e9,#355369);--soft:light-dark(#f2f7fa,#18394f);--selected:light-dark(#e0effa,#214c69);--field:light-dark(#fff,#0d2639);--cpu:light-dark(#1479ad,#71c9ee);--llm:light-dark(#8251bb,#c3a0ed);--sandbox:light-dark(#a77615,#e9c17b);--check:light-dark(#27856d,#89d3bc);--support:light-dark(#668498,#83a9c1);--idle:light-dark(#e6edf2,#233f53)}
+:root[data-theme=light]{color-scheme:light}:root[data-theme=dark]{color-scheme:dark}
+*{box-sizing:border-box}body{margin:0;background:var(--page);color:var(--ink);font:14px/1.35 Arial,Helvetica,sans-serif}button,input,select,a,summary{font:inherit;color:inherit}button,select,summary{cursor:pointer}button{border:1px solid var(--edge);background:var(--soft);border-radius:6px;padding:4px 8px}button:hover{background:var(--selected)}button:focus-visible,summary:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid var(--cpu);outline-offset:2px}button:disabled{opacity:.4;cursor:default}input,select{background:var(--field);border:1px solid var(--edge);border-radius:6px;padding:2px 6px;height:28px;min-width:0}input{font-variant-numeric:tabular-nums}option,optgroup{background:var(--panel);color:var(--ink)}h1,h2,p{margin:0}h1{font-size:26px;font-weight:500;line-height:1.15;letter-spacing:-.5px}h2{font-size:18px;font-weight:500;line-height:1.25}small{display:block}[hidden]{display:none!important}
+.study-tabs{display:flex;align-items:center;gap:10px;height:44px;padding:5px 18px;border-bottom:1px solid var(--edge);background:var(--panel)}.study-tabs>span{font-size:12px;color:var(--muted);margin-right:12px}.study-tabs button[aria-pressed=true]{background:var(--selected)}#current{width:100%;height:calc(100dvh - 44px);border:0}
+/* Layout uses screen pixels, rather than shrinking a fixed-size slide. */
+#panel-a{width:100%;margin:0;padding:clamp(12px,1.2vw,24px);display:grid;grid-template-rows:auto minmax(0,1fr) auto;gap:10px;height:calc(100dvh - 44px)}body.standalone #panel-a{height:100dvh}
+.appbar{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:28px;margin-bottom:8px}.brand{display:flex;align-items:center;gap:12px}.brand img{width:122px;height:auto;filter:brightness(0)}:root[data-theme=dark] .brand img{filter:brightness(0) invert(1)}.brand span,.eyebrow{font-size:11px;letter-spacing:1px;text-transform:uppercase;font-weight:500;color:var(--muted)}.controls{display:flex;align-items:center;gap:8px}.theme-switch{display:flex;border:1px solid var(--edge);border-radius:6px;overflow:hidden}.theme-switch button{border:0;border-radius:0;background:transparent;padding:4px 9px;font-size:12px}.theme-switch button[aria-pressed=true]{background:var(--selected)}#utility-menu{position:relative}#utility-menu summary{list-style:none;padding:4px 8px;font-size:12px;border:1px solid var(--edge);border-radius:6px;background:var(--soft)}#utility-menu summary::-webkit-details-marker{display:none}.utility-actions{position:absolute;z-index:5;right:0;top:34px;min-width:190px;padding:6px;border:1px solid var(--edge);border-radius:10px;background:var(--panel);box-shadow:0 10px 25px light-dark(#17334925,#0008)}.utility-actions button{display:block;width:100%;border:0;padding:9px;text-align:left;background:transparent}.utility-actions button:hover{background:var(--selected)}
+.hero{display:flex;align-items:center;justify-content:space-between;gap:16px}.headline{min-width:0}.headline>p{font-size:13px;color:var(--muted);margin-top:5px}.ratio{display:flex;align-items:center;gap:10px;padding:0 0 0 16px;border:0;border-left:1px solid var(--edge);border-radius:0;background:transparent;flex:none;text-align:left}.ratio strong{font-size:28px;font-weight:400;white-space:nowrap;font-variant-numeric:tabular-nums}.ratio>span{font-size:12px;line-height:1.45}.ratio small{color:var(--muted);margin-top:3px}
+.glass{border:1px solid var(--edge);border-radius:12px;background:var(--panel)}.layout{display:grid;grid-template-columns:1.12fr 1fr 1fr;gap:12px;min-height:0}.layout>section{padding:12px 14px;min-width:0;min-height:0;display:flex;flex-direction:column;gap:8px}.connector{display:none}.tier-heading{display:grid;gap:4px}.workload{gap:6px!important}.workload-fields{display:grid;grid-template-columns:minmax(0,1fr) 104px;gap:10px}.workload-fields>label{display:grid;gap:4px;font-size:12px;color:var(--muted)}.workload-fields input,.workload-fields select{width:100%;font-size:16px;color:var(--ink)}.row-columns{display:flex;justify-content:space-between;padding:0 7px;font-size:12px;color:var(--muted);margin-top:2px}
+/* Only the active workflow gets a fill. Names and shares stay unboxed. */
+.rows{display:grid;grid-auto-rows:minmax(44px,1fr);gap:4px;flex:1;min-height:0}.agent-row{padding:2px 6px;border:1px solid transparent;border-bottom-color:var(--edge);display:grid;align-content:center;gap:1px;min-height:0}.agent-row.selected{background:var(--selected);box-shadow:inset 2px 0 var(--cpu);border-radius:4px}.agent-line{display:flex;align-items:center;gap:5px;min-width:0}.agent-select{width:22px;height:24px;flex:none;border:0;padding:0;background:transparent!important;display:grid;place-items:center}.agent-select .icon{width:18px;height:18px;display:grid;place-items:center}.icon svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linejoin:round}.workflow-select{flex:0 1 auto;width:auto;field-sizing:content;max-width:calc(100% - 112px);margin-right:20px;height:24px;padding:1px 4px;font-size:14px;border-color:transparent;border-radius:0;background:transparent}.edit{display:flex;align-items:center;gap:3px;font-size:12px;flex:none;margin-left:auto}.edit input{width:53px;height:24px;font-size:16px;padding:1px 3px;border-color:transparent;border-radius:0;background:transparent}.edit input::-webkit-inner-spin-button{opacity:1}.workflow-select:hover,.workflow-select:focus,.edit input:hover,.edit input:focus{border-bottom-color:var(--cpu)}.agent-meta{display:flex;justify-content:space-between;gap:5px;font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap;line-height:14px}.agent-meta b{font-weight:500;color:var(--ink)}.mix-help,.status{font-size:12px;color:var(--muted);line-height:1.35}.status.pending{color:light-dark(#a22e28,#ffc0b4)}.add-agent{text-align:left;background:transparent;border-style:dashed;min-height:30px;font-size:12px}
+.hardware-heading{display:flex;align-items:center;gap:10px;padding:0;border:0;background:transparent;text-align:left;min-height:40px}.hardware-heading>strong{font-size:38px;font-weight:400;line-height:1;font-variant-numeric:tabular-nums}.hardware-heading>span{font-size:16px}.hardware-heading small{font-size:12px;color:var(--muted);margin-top:4px}.hardware-heading .detail-cue{margin-left:auto;color:var(--muted);font-size:14px}.hardware-product{display:grid;grid-template-rows:1fr 1fr;gap:5px;flex:1;min-height:108px}.hardware-art{position:relative;height:60px;min-height:60px;align-self:center;display:flex;align-items:center;justify-content:center;border:0;padding:0;background:transparent}.server-stack{display:grid;gap:2px;width:84%;max-width:210px}.server-stack img{width:100%;height:18px;object-fit:contain}.hardware-art .xeon{position:absolute;right:0;bottom:0;width:28px;height:28px;object-fit:contain}.gpu-photos{width:100%;height:100%;display:flex;justify-content:center;align-items:center}.gpu-photos img{width:95%;height:60px;object-fit:contain}.more,.empty-hardware{font-size:12px;color:var(--muted)}
+.metric{display:flex;justify-content:space-between;align-items:center;gap:8px;text-align:left;border:0;border-top:1px solid var(--edge);border-radius:0;background:transparent;padding:8px 0 0}.metric>span{font-size:14px}.metric strong{font-size:23px;font-weight:400;font-variant-numeric:tabular-nums;white-space:nowrap;line-height:1.2}.metric small{font-size:12px;color:var(--muted);margin-top:4px}.metric:has(#cpu),.metric:has(#gpu-demand){display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 8px;padding-top:9px}.metric:has(#cpu)>span,.metric:has(#gpu-demand)>span{display:contents}.metric:has(#cpu) small,.metric:has(#gpu-demand) small{grid-column:1/-1;grid-row:2;margin:0}.metric:has(#cpu) strong,.metric:has(#gpu-demand) strong{grid-column:2;grid-row:1}.metric:has(#cpu) strong,.metric:has(#gpu-demand) strong{font-size:26px}.cpu-stack,.demand-track{height:9px;flex:none;display:flex;gap:2px;background:var(--idle);border-radius:5px;overflow:hidden}.cpu-stack i,.demand-track i{display:block;height:100%;transition:width .6s ease,filter .5s}.cpu-stack i.active{filter:brightness(1.2)}.demand-track i{background:var(--llm)}.legend{display:flex;flex-wrap:wrap;align-content:flex-start;gap:4px 9px;min-height:34px;font-size:12px;color:var(--muted)}.legend span{display:flex;align-items:center;gap:4px}.legend i{width:7px;height:7px;border-radius:2px;flex:none}.serving>.hardware-product{order:2}.serving>.metric{order:6}.serving>.metric:has(#gpu-demand){order:3}.serving>.demand-track{order:4}.serving>.serving-reference{order:5}.serving-reference{font-size:12px;color:var(--muted);line-height:1.45;min-height:34px}
+.workflow{padding:10px 12px;display:grid;gap:7px;min-width:0}.workflow-heading{display:flex;align-items:center;gap:8px;min-width:0}.workflow-heading h2{flex:1;font-size:15px;min-width:0}.workflow-heading>button{font-size:12px;white-space:nowrap}.worker-sequence{display:flex;flex-wrap:wrap;gap:4px;align-items:center}.worker-sequence button{padding:2px 7px;border:0;background:transparent;font-size:12px}.worker-sequence button.current{background:var(--selected)}.worker-sequence button.done,.seq-link{color:var(--muted)}.seq-link{font-size:12px}.flow{display:flex;gap:7px;min-width:0}.flow-link{display:none}.flow-node{flex:1;min-width:0;border:0;border-top:2px solid var(--role);border-radius:6px;background:var(--soft);padding:6px 8px;text-align:left}.flow-node small{font-size:11px;letter-spacing:.4px;color:var(--muted);text-transform:uppercase;margin-bottom:3px}.flow-node b{display:block;font-size:13px;line-height:1.2;font-weight:400}.flow-node.active{background:color-mix(in srgb,var(--role) 12%,var(--soft))}.flow-note{display:none}footer{font-size:11px;color:var(--muted);text-align:center;line-height:14px}
+/* The shared drill-downs inherit the selected appearance too. */
+dialog{color:var(--ink);border:1px solid var(--edge);border-radius:14px;background:var(--panel);padding:24px;max-height:90dvh;overflow:auto}dialog::backdrop{background:light-dark(#17334955,#0008);backdrop-filter:blur(4px)}dialog .close{float:right;margin-bottom:15px}.topic-links{display:flex;flex-wrap:wrap;gap:18px;align-items:center;margin-top:20px;font-size:14px}.visual-detail{background:var(--panel);border-color:var(--edge)}.visual-detail a{color:var(--cpu)}.visual-detail .close{background:var(--soft)}.visual-detail small,.visual-detail .dv-caption,.visual-detail .dv-stat span,.visual-detail .dv-node span,.visual-detail .dv-job ul,.visual-detail .dv-core-pools>div,.visual-detail .dv-bar-row>span,.visual-detail .dv-comparison-head,.visual-detail .dv-product-tag{color:var(--muted)}.visual-detail .dv-stat,.visual-detail .dv-pane,.visual-detail .dv-job,.visual-detail .dv-node,.visual-detail .dv-server-hero{background:var(--soft);border-color:var(--edge);box-shadow:none}.visual-detail .dv-core-pools b{color:var(--ink)}.visual-detail .dv-sweep text{fill:var(--muted)}.visual-detail .dv-brand img:first-child{filter:brightness(0)}:root[data-theme=dark] .visual-detail .dv-brand img:first-child{filter:brightness(0) invert(1)}.visual-detail .dv-divider,.visual-detail .dv-finish,.visual-detail .dv-method section,.visual-detail .dv-comparison>div{border-color:var(--edge)}#agent-picker{width:min(420px,92vw)}#agent-options{clear:both;display:grid;gap:10px;margin-top:22px}
+@media(min-width:980px){html{height:100%;overflow-x:hidden;overflow-y:auto}body{min-height:100%;overflow:visible}#panel-a{min-height:660px;grid-template-rows:auto minmax(min-content,1fr) auto}.layout>section{min-height:min-content}.rows{min-height:min-content}.hardware-product{grid-template-rows:minmax(40px,1fr) auto;min-height:min-content}.metric,.legend,.serving-reference{flex-shrink:0}}
+@media(min-width:980px) and (max-height:700px){#panel-a{padding:12px;gap:10px}.layout>section{padding:10px 12px;gap:6px}.hardware-art{height:60px;min-height:60px}.gpu-photos img{height:60px}.server-stack img{height:18px}.workflow{padding:8px 10px;gap:5px}.workflow-heading{flex-wrap:wrap}}
+@media(max-width:1100px){.worker-sequence .seq-link{display:none}.worker-sequence button{padding:2px 4px;font-size:11px}.legend{gap:4px 7px}}
+@media(max-width:979px){#panel-a,body.standalone #panel-a{height:auto;grid-template-rows:auto auto auto}.layout{grid-template-columns:1fr 1fr}.workload{grid-column:1/-1}.rows{grid-template-columns:repeat(2,minmax(0,1fr));grid-auto-rows:minmax(50px,auto)}.row-columns{display:none}.brand span{display:none}.hero{align-items:flex-start}h1{font-size:23px}.ratio{flex-direction:column;align-items:flex-start;gap:3px}.workflow-heading{flex-wrap:wrap}.worker-sequence{order:3;flex-basis:100%}.flow{display:grid;grid-template-columns:repeat(4,minmax(0,1fr))}.hardware-art{min-height:90px;height:90px}}
+@media(max-width:600px){#panel-a{padding:12px}.appbar{flex-wrap:wrap}.hero{flex-direction:column;gap:10px}.ratio{border-left:0;padding-left:0;flex-direction:row;align-items:center}.layout{grid-template-columns:1fr}.workload{grid-column:auto}.rows{grid-template-columns:1fr}.flow{grid-template-columns:repeat(2,minmax(0,1fr))}.study-tabs{padding:5px 12px}.study-tabs>span{display:none}.visual-detail{padding:16px}}
+@media(prefers-reduced-motion:reduce){*,*:before,*:after{animation:none!important;transition:none!important}}
+
+/* Pending edits use the same explanation space as the default help text. */
+.workload:has(.status:not([hidden])) .mix-help{display:none}
+.server-stack .more{position:absolute;bottom:0;left:0;font-size:11px;background:var(--panel);padding:0 3px}
+
+.metric-unit{font-size:14px;color:var(--muted);margin-left:2px;font-weight:400}
+
+/* Use spare viewport space for the illustration and readable content. */
+@media(min-width:980px){
+ .hardware-art{height:clamp(60px,14dvh,156px);min-height:60px}
+ .server-stack{max-width:360px}
+ .server-stack img{height:clamp(18px,3.8dvh,42px)}
+ .gpu-photos img{height:100%}
+ .workflow{min-height:clamp(90px,13dvh,140px);grid-template-rows:auto minmax(0,1fr)}
+ .flow-node{display:flex;flex-direction:column;justify-content:center}
+}
+@media(min-width:1200px) and (min-height:840px){
+ #panel-a{gap:14px}
+ .layout{gap:16px}
+ .layout>section{padding:18px 20px;gap:10px}
+ h1{font-size:32px}h2{font-size:22px}
+ .headline>p{font-size:15px}
+ .eyebrow,.brand span{font-size:12px}
+ .ratio strong{font-size:34px}.ratio>span{font-size:14px}
+ .workload-fields{grid-template-columns:minmax(0,1fr) 124px}
+ .workload-fields>label,.row-columns,.agent-meta,.mix-help,.status{font-size:14px}
+ .workload-fields input,.workload-fields select{font-size:18px;height:34px}
+ .workflow-select{font-size:17px;height:30px}
+ .edit input{font-size:19px;height:30px;width:60px}.edit{font-size:14px}
+ .agent-meta{line-height:18px}.agent-row{gap:4px}
+ .hardware-heading>strong{font-size:48px}.hardware-heading>span{font-size:20px}
+ .hardware-heading small,.metric small,.legend,.serving-reference{font-size:14px}
+ .metric>span{font-size:16px}.metric strong{font-size:28px}
+ .metric:has(#cpu) strong,.metric:has(#gpu-demand) strong{font-size:32px}
+ .metric-unit{font-size:16px}.cpu-stack,.demand-track{height:12px}
+ .workflow{padding:14px 16px;gap:10px}.workflow-heading h2{font-size:18px}
+ .flow-node{padding:10px 12px}.flow-node small{font-size:12px}.flow-node b{font-size:15px}
+}
+
+/* Stacked cards size their hardware from card width, not desktop thumbnail heights. */
+@media(max-width:979px){
+ .hardware-product{flex:none;grid-template-rows:auto auto;min-height:0;gap:16px}
+ .hardware-heading{min-height:44px}
+ .hardware-art{height:auto;min-height:0;padding:8px 28px}
+ .server-stack{width:100%;max-width:360px}
+ .server-stack img{width:100%;height:auto}
+ .gpu-photos{height:clamp(120px,42vw,180px);overflow:hidden}.gpu-photos img{width:100%;height:auto;max-width:360px;transform:scale(1.6)}
+ .hardware-art .xeon{width:28px;height:28px;right:0;bottom:8px}
+}
+@media(min-width:980px) and (max-height:700px){
+ .hardware-art{height:60px;min-height:60px}
+ .server-stack img{height:18px}
+ .workflow{min-height:90px}
+}
+
+.headline>.dashboard-instruction{font-size:16px;line-height:1.25;color:var(--ink);margin-top:6px}
+@media(min-width:1200px) and (min-height:840px){.headline>.dashboard-instruction{font-size:19px}}
+@media(max-width:979px){.headline>.dashboard-instruction{font-size:15px}}
+@media(min-width:980px) and (max-height:700px){.appbar{margin-bottom:5px}.headline>.dashboard-instruction{font-size:15px;margin-top:4px}.headline>#result-sentence{font-size:12px;margin-top:3px}}
+
+/* Co-brand the header and keep processor badges beside both system images. */
+.brand img[data-asset=intel]{width:50px;filter:brightness(0)}
+:root[data-theme=dark] .brand img[data-asset=intel]{filter:brightness(0) invert(1)}
+.hardware-art{display:grid;grid-template-columns:minmax(0,min(74%,360px)) 56px;justify-content:center;column-gap:16px}
+.hardware-art .server-stack{width:100%}
+.hardware-art .gpu-photos{min-width:0}
+.hardware-art .xeon{position:static;width:56px;height:56px;align-self:center;justify-self:center}
+@media(max-width:1100px){.hardware-art{column-gap:12px;grid-template-columns:minmax(0,1fr) 48px}.hardware-art .xeon{width:48px;height:48px}}
+@media(max-width:979px){.hardware-art{padding:8px 0;grid-template-columns:minmax(0,1fr) 56px}.hardware-art .xeon{width:56px;height:56px}}
+
+@media(min-width:980px){
+ .hardware-art{grid-template-columns:minmax(0,clamp(100px,21dvh,240px)) 56px;grid-template-rows:minmax(0,1fr)}
+ .hardware-art:has(.gpu-photos){grid-template-columns:minmax(0,clamp(120px,22dvh,220px)) 56px}
+ .hardware-art .gpu-photos{height:100%;min-height:0;overflow:hidden}
+ .hardware-art .gpu-photos img{width:100%;height:100%;transform:scale(1.6)}
+}
+
+/* Give the title and instruction the space recovered from the footer. */
+.dashboard-header{padding-bottom:12px}
+.appbar{margin-bottom:12px}
+.headline>.dashboard-instruction{margin-top:9px}
+@media(min-width:980px) and (max-height:700px){.dashboard-header{padding-bottom:8px}.appbar{margin-bottom:8px}.headline>.dashboard-instruction{margin-top:6px}}
+/* The system count sits on its own line under the server images instead of over them. */
+.hardware-art .server-stack .more{position:static;display:block;text-align:center;font-size:12px;line-height:1.3;padding:2px 0 0;background:none}
+/* Kit additions: Roboto (embedded), the link back to the results, and generic server illustrations, which are drawn edge to edge and need no crop. */
+body{font-family:Roboto,Arial,Helvetica,sans-serif}
+.back-link{font-size:12px;padding:4px 9px;border:1px solid var(--edge);border-radius:6px;text-decoration:none;background:var(--soft)}.back-link:hover{background:var(--selected)}
+.hardware-art .gpu-photos img.generic,.gpu-photos img.generic{transform:none;object-fit:contain}
+.dv-product.generic{filter:none}
+
+/* ===== Look and feel. The layout above is unchanged; this layer replaces the
+   generic dashboard treatment: Roboto as embedded, one surface divided by
+   hairlines instead of three cards on a tinted ground, sentence-case section
+   titles, light numerals, quiet controls, plain workflow tiles with a role dot,
+   and one colour per meaning (blue is model serving). ===== */
+:root{
+ --page:light-dark(#FFFFFF,#0F1A24);--panel:light-dark(#FFFFFF,#0F1A24);--field:light-dark(#FFFFFF,#0F1A24);
+ --ink:light-dark(#13263A,#E8EEF4);--muted:light-dark(#5A6876,#9FB0C0);--edge:light-dark(#DDE2E7,#26384A);
+ --soft:light-dark(#F3F5F7,#16232F);--selected:light-dark(#EEF1F4,#1B2A38);
+ --llm:light-dark(#0672CB,#4BA3EE);--sandbox:light-dark(#3F5568,#93A7BA);--check:light-dark(#0B7C84,#2FB0B8);
+ --cpu:light-dark(#B7791F,#E0A44A);--support:light-dark(#A3AEB9,#5C6E80);--idle:light-dark(#E6EAEE,#1E2C3A)
+}
+body{font-family:Roboto,"Helvetica Neue",Arial,sans-serif;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}
+button:focus-visible,summary:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--llm);outline-offset:2px}
+button{border-radius:4px;background:transparent}button:hover{background:var(--soft)}
+input,select{border-radius:4px}
+
+/* One surface: the header rule and column hairlines carry the structure */
+.dashboard-header{border-bottom:1px solid var(--edge)}
+.glass{border:0;border-radius:0;background:transparent}
+.layout{gap:0}
+.layout>section{padding:4px clamp(16px,1.6vw,28px)}
+.layout>.workload{padding-left:0}.layout>.serving{padding-right:0}
+.execution,.serving{border-left:1px solid var(--edge)}
+.workflow{border-top:1px solid var(--edge);padding:12px 0 0}
+
+/* Titles in sentence case; the product line reads as a title, not a label */
+.eyebrow{font-size:13px;letter-spacing:0;text-transform:none;font-weight:500;color:var(--muted)}
+.brand span{font-size:14px;letter-spacing:0;text-transform:none;font-weight:400;color:var(--muted);border-left:1px solid var(--edge);padding-left:12px}
+.tier-heading h2{font-weight:400}
+
+/* Type scale: light numerals, one hero figure */
+h1{font-weight:300;letter-spacing:-.02em}
+.hardware-heading>strong,.metric strong{font-weight:300;letter-spacing:-.01em}
+.ratio{border-left:0;gap:14px}
+.ratio strong{font-weight:300;color:var(--llm);font-size:clamp(34px,4.6dvh,56px);letter-spacing:-.02em;line-height:1}
+.ratio>span{font-weight:500}.ratio small{font-weight:400}
+
+/* Quiet controls: text, not pills */
+.theme-switch{border:0;gap:4px}
+.theme-switch button{color:var(--muted);padding:4px 6px}
+.theme-switch button[aria-pressed=true]{background:transparent;color:var(--ink);box-shadow:inset 0 -2px var(--ink);border-radius:0}
+#utility-menu summary{border:0;background:transparent;color:var(--muted)}
+.utility-actions{border-radius:4px;box-shadow:0 8px 24px light-dark(#13263A1F,#0009)}
+#agent-details,.hardware-heading .detail-cue{color:var(--muted)}
+#agent-details{border:0}
+
+/* Agent rows: the selected one is shaded, with no accent rail */
+.agent-row.selected{background:var(--soft);box-shadow:none;border-radius:0}
+.agent-row.selected .workflow-select{font-weight:500}
+.icon svg{stroke:var(--muted)}
+
+/* Bars: square-ish ends, the meaning carried by colour */
+.cpu-stack,.demand-track{border-radius:2px}
+.legend i{border-radius:50%}
+
+/* Workflow: plain tiles; a dot names the role; the active step is outlined in ink */
+.flow-node{border:1px solid var(--edge);border-radius:4px;background:transparent}
+.flow-node small{text-transform:none;letter-spacing:0;font-size:12px;display:flex;align-items:center;gap:6px}
+.flow-node small::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--role);flex:none}
+.flow-node.active{background:transparent;border-color:var(--ink);box-shadow:inset 0 0 0 1px var(--ink)}
+.worker-sequence button{border-radius:0}
+.worker-sequence button.current{background:transparent;color:var(--ink);font-weight:500;box-shadow:inset 0 -2px var(--ink)}
+
+/* Detail views */
+dialog{border-radius:6px}dialog::backdrop{backdrop-filter:none}
+.visual-detail .dv-stat,.visual-detail .dv-pane,.visual-detail .dv-job,.visual-detail .dv-node,.visual-detail .dv-server-hero{border-radius:4px}
+
+/* ===== Look and feel, second pass ===== */
+/* A measured claim in place of a slogan; the live sizing sentence under it */
+#headline{max-width:34ch;text-wrap:balance}
+.headline>#result-sentence{color:var(--muted)}
+
+/* Agent rows: a colour swatch (the agent's colour in the white paper) instead of a stock icon */
+.agent-select .icon{width:10px;height:10px;border-radius:2px;background:var(--agent)}
+.agent-select .icon svg{display:none}
+.agent-select{width:16px}
+.workflow-select{appearance:none;-webkit-appearance:none;padding-right:16px;background-repeat:no-repeat;background-position:right 2px center;background-size:10px}
+.workflow-select:hover,.workflow-select:focus{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%235A6876' stroke-width='1.4'/%3E%3C/svg%3E")}
+
+/* Large numerals only where they lead: server counts, utilization, the ratio.
+   Supporting figures read as a table at body size. */
+.metric:not(:has(#cpu)):not(:has(#gpu-demand)){padding-top:6px}
+.metric:not(:has(#cpu)):not(:has(#gpu-demand))>span{color:var(--muted);font-size:14px}
+.metric:not(:has(#cpu)):not(:has(#gpu-demand)) strong{font-size:16px;font-weight:400;letter-spacing:0}
+.metric:not(:has(#cpu)):not(:has(#gpu-demand)) .metric-unit{font-size:13px}
+.metric:not(:has(#cpu)):not(:has(#gpu-demand))+.metric{border-top:0}
+
+/* Server headings: the whole heading is the way into the details */
+.hardware-heading:hover span:first-of-type{text-decoration:underline;text-underline-offset:4px;text-decoration-thickness:1px}
+#agent-details:hover{color:var(--ink);text-decoration:underline;text-underline-offset:4px;background:transparent}
+
+/* CPU bar: labels sit under their own segments; narrow segments keep their name in a tooltip */
+.legend#cpu-key{display:flex;flex-wrap:nowrap;gap:2px;min-height:18px;font-size:12px;color:var(--muted)}
+.legend#cpu-key span{display:block;flex:none;overflow:hidden;white-space:nowrap;text-overflow:clip;transition:width .6s ease}
+.legend#cpu-key span.narrow{color:transparent}
+#cpu-label-4{text-align:right}
+
+/* The ratio: whole numbers lead, the exact per-socket figure follows */
+.ratio small{font-size:12px}
+@media(min-width:1200px) and (min-height:840px){.metric:not(:has(#cpu)):not(:has(#gpu-demand)) strong{font-size:18px}.metric:not(:has(#cpu)):not(:has(#gpu-demand))>span{font-size:15px}}
+.ratio strong{font-size:clamp(40px,6.4dvh,76px)}
+.ratio>span{font-size:14px;line-height:1.35}
+.ratio small{margin-top:4px;line-height:1.45}
+/* Title and sizing sentence each hold one line on a desktop screen */
+@media(min-width:980px){
+ #headline{max-width:none;white-space:nowrap;font-size:clamp(22px,min(2.15vw,4dvh),36px)}
+ .headline>#result-sentence{white-space:nowrap;font-size:clamp(13px,min(1.05vw,2dvh),16px);margin-top:6px}
+ .headline{overflow:hidden}
+}
+#installed-capacity{white-space:pre-line}
+
+/* Kit: the run status link reads like the other header controls; the strip shows only during a run */
+.back-link{border:0;background:transparent;color:var(--muted);padding:4px 6px;font-size:12px;text-decoration:none}
+.back-link:hover{color:var(--ink);background:transparent;text-decoration:underline;text-underline-offset:4px}
+.run-strip{margin:0 0 10px;padding:6px 10px;border-left:2px solid var(--llm);background:var(--soft);font-size:13px;color:var(--ink)}

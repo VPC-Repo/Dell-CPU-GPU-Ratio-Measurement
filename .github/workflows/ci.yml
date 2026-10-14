@@ -1,0 +1,45 @@
+name: checks
+on:
+  push:
+  pull_request:
+jobs:
+  tests:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: System tools the jobs use
+        run: sudo apt-get update -q && sudo apt-get install -y -q tesseract-ocr tesseract-ocr-eng sysstat
+      - name: Python packages
+        run: python -m venv bench/.venv && bench/.venv/bin/pip install -q -r bench/requirements.txt pytest pytest-asyncio
+      - name: Unit tests
+        working-directory: bench
+        run: .venv/bin/python -m pytest -q tests
+      - name: Page checks
+        run: |
+          node ui/replay/check-panel-a.cjs
+          node ui/replay/check-details.cjs
+          node ui/replay/check-shapes.cjs
+  images:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the bench image
+        run: docker build -f bench/Dockerfile -t ratio-bench:ci .
+      - name: Build the embedder image
+        run: docker build -f embedder/Dockerfile -t ratio-embedder:ci embedder
+      - name: Readiness check runs in the image
+        run: |
+          docker run --rm --privileged ratio-bench:ci /opt/bench/.venv/bin/python -m runner.preflight --quick --json > preflight.json || test "$?" -eq 2
+          python3 - <<'PY'
+          import json
+          with open("preflight.json") as f:
+              report = json.load(f)
+          assert isinstance(report["ok"], bool)
+          assert report["checks"] and report["system"]
+          PY

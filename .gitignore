@@ -1,0 +1,16 @@
+# local environments
+bench/.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+# generated at run time on the server
+bench/data/capacity/*
+!bench/data/capacity/build/
+bench/data/capacity/build/src/
+/data/
+.env
+.env.*
+!.env.example
+bench/data/*
+!bench/data/capacity/
+bench/data/capacity/build/.extract.lock

@@ -1,0 +1,500 @@
+<!doctype html>
+<html lang="en">
+<head>
+<link rel="stylesheet" href="fonts.css">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Agent capacity measurement</title>
+<style>
+:root{
+  --accent:#0672CB;--accent-ink:#0063B8;--accent-soft:#E6F1FA;--on-accent:#fff;
+  --page:#FFFFFF;--panel:#FFFFFF;--panel-2:#F3F5F7;--ink:#13263A;--muted:#5A6876;--faint:#8A949E;--line:#DDE2E7;--track:#E6EAEE;
+  --pass:#1F7A3D;--pass-bg:#E5F4EA;--warn:#8A5A00;--warn-bg:#FFF3D6;--fail:#B3261E;--fail-bg:#FCE8E6;--info-bg:#EEF2F6;
+  --ref:#9AA5B1;--shadow:0 1px 2px rgba(16,24,32,.06),0 1px 3px rgba(16,24,32,.04);
+  --font:Roboto,"Segoe UI",system-ui,-apple-system,"Helvetica Neue",Arial,sans-serif;
+  --mono:ui-monospace,"SF Mono",Menlo,Consolas,"Roboto Mono",monospace;
+}
+@media (prefers-color-scheme:dark){:root{
+  --accent:#3D95E0;--accent-ink:#7DB9EE;--accent-soft:#11263A;--on-accent:#06121E;
+  --page:#0F1A24;--panel:#0F1A24;--panel-2:#16232F;--ink:#E8EEF4;--muted:#9FB0C0;--faint:#76828E;--line:#26384A;--track:#1E2C3A;
+  --pass:#7FD39A;--pass-bg:#15301F;--warn:#F2C46B;--warn-bg:#352A10;--fail:#FF9C93;--fail-bg:#3A1A18;--info-bg:#1D252E;
+  --ref:#5F6B77;--shadow:none;
+}}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--page);color:var(--ink);font:15px/1.5 var(--font);font-variant-numeric:tabular-nums}
+h1,h2,h3,p{margin:0}
+h1{font-size:22px;font-weight:500;letter-spacing:-.2px;line-height:1.25}
+h2{font-size:17px;font-weight:500;line-height:1.3}
+h3{font-size:14px;font-weight:500;color:var(--muted)}
+a{color:var(--accent-ink)}
+code,.mono{font-family:var(--mono);font-size:.92em}
+[hidden]{display:none!important}
+.wrap{max-width:1120px;margin:0 auto;padding:0 24px}
+header.top{background:var(--panel);border-bottom:1px solid var(--line)}
+.top .wrap{display:flex;align-items:center;gap:14px;min-height:56px;flex-wrap:wrap;padding-top:8px;padding-bottom:8px}
+.logos{display:flex;align-items:center;gap:12px;flex:none;padding-right:14px;border-right:1px solid var(--line)}
+.logos img{height:18px;width:auto;filter:brightness(0)}.logos img[data-asset=dell]{height:16px}
+@media (prefers-color-scheme:dark){.logos img{filter:brightness(0) invert(1)}}
+.brand{display:flex;flex-direction:column;min-width:0;flex:1}
+.brand b{font-weight:500;font-size:15px}
+.brand span{color:var(--muted);font-size:13px;overflow-wrap:anywhere}
+.state{font-size:13px;font-weight:500;padding:3px 10px;border-radius:4px;background:var(--info-bg);color:var(--muted);white-space:nowrap}
+.state.run{background:var(--accent-soft);color:var(--accent-ink)}
+.state.done{background:var(--pass-bg);color:var(--pass)}
+.state.bad{background:var(--fail-bg);color:var(--fail)}
+main{padding:24px 0 40px}
+.stack{display:grid;gap:16px}
+.grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:4px;padding:20px;box-shadow:none;min-width:0}
+.card>h2+*,.card>h3+*{margin-top:12px}
+.lead{color:var(--muted);margin-top:6px}
+.banner{border-radius:8px;padding:12px 16px;border:1px solid var(--line);background:var(--panel)}
+.banner.warn{background:var(--warn-bg);border-color:transparent;color:var(--warn)}
+.banner.fail{background:var(--fail-bg);border-color:transparent;color:var(--fail)}
+.banner.info{background:var(--accent-soft);border-color:transparent;color:var(--accent-ink)}
+.banner b{font-weight:500}
+.pill{display:inline-block;font-size:12.5px;font-weight:500;padding:2px 8px;border-radius:4px;white-space:nowrap}
+.pill.pass{background:var(--pass-bg);color:var(--pass)}.pill.warn{background:var(--warn-bg);color:var(--warn)}.pill.fail{background:var(--fail-bg);color:var(--fail)}.pill.info{background:var(--info-bg);color:var(--muted)}.pill.run{background:var(--accent-soft);color:var(--accent-ink)}
+.specs{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px 20px;margin-top:14px}
+.specs div{min-width:0}
+.specs dt,.k{font-size:12px;color:var(--muted)}
+.specs dd{margin:2px 0 0;font-size:17px;overflow-wrap:anywhere}
+.specs dd .k{display:block;margin-top:1px}
+dl{margin:0}
+.checks{list-style:none;margin:12px 0 0;padding:0}
+.checks li{display:grid;grid-template-columns:72px minmax(0,1fr);gap:4px 12px;padding:10px 0;border-top:1px solid var(--line);align-items:start}
+.checks li:first-child{border-top:0}
+.checks .pill{justify-self:start;margin-top:2px}
+.checks b{font-weight:500}
+.checks span{display:block;color:var(--muted);font-size:14px;overflow-wrap:anywhere}
+.cmd{display:flex;align-items:center;gap:10px;background:var(--panel-2);border:1px solid var(--line);border-radius:6px;padding:10px 12px;margin-top:12px;font-family:var(--mono);font-size:15px;overflow-x:auto}
+.cmd::before{content:"$";color:var(--faint)}
+.cmd code{flex:1;white-space:nowrap}
+button,.button{font:inherit;font-size:14px;border-radius:6px;border:1px solid var(--line);background:var(--panel);color:var(--ink);padding:6px 12px;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;gap:8px}
+button:hover,.button:hover{border-color:var(--accent)}
+.button.primary{background:var(--accent);border-color:var(--accent);color:var(--on-accent);font-weight:500;padding:10px 18px;font-size:15px}
+.button.primary:hover{filter:brightness(1.08)}
+:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.big{font-size:32px;font-weight:300;line-height:1.1;letter-spacing:-.5px}
+.big small{font-size:14px;color:var(--muted);font-weight:400;letter-spacing:0;margin-left:4px}
+.kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px}
+.kpi .k{margin-bottom:6px}
+.kpi .sub{font-size:13px;color:var(--muted);margin-top:4px}
+.bar{height:8px;background:var(--track);border-radius:4px;overflow:hidden;margin-top:8px}
+.bar i{display:block;height:100%;background:var(--accent);border-radius:4px;transition:width .6s ease}
+.steps{list-style:none;margin:12px 0 0;padding:0}
+.steps li{display:grid;grid-template-columns:22px minmax(0,1fr) auto;gap:4px 12px;padding:12px 0;border-top:1px solid var(--line);align-items:start}
+.steps li:first-child{border-top:0}
+.dot{width:12px;height:12px;border-radius:50%;border:2px solid var(--faint);margin-top:5px;justify-self:center}
+.steps .done .dot{background:var(--pass);border-color:var(--pass)}
+.steps .bad .dot{background:var(--fail);border-color:var(--fail)}
+.steps .now .dot{border-color:var(--accent);background:var(--accent);box-shadow:0 0 0 4px var(--accent-soft)}
+.steps .todo{color:var(--muted)}
+.steps .detail{grid-column:2/4;color:var(--muted);font-size:14px}
+.steps .detail .bar{max-width:420px}
+.gauge{display:grid;gap:4px}
+.gauge .bar{height:12px}
+.spark{width:100%;height:48px;margin-top:10px;display:block}
+.spark polyline{fill:none;stroke:var(--accent);stroke-width:1.5;vector-effect:non-scaling-stroke}
+.spark .area{fill:var(--accent-soft);stroke:none}
+.ratio{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:24px;align-items:start}
+.ratio .headline{font-size:56px;font-weight:300;line-height:1;letter-spacing:-1px;color:var(--accent-ink)}
+.ratio .headline small{display:block;font-size:14px;letter-spacing:0;color:var(--muted);margin-top:8px;font-weight:400}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th,td{text-align:right;padding:7px 0 7px 12px;border-top:1px solid var(--line);vertical-align:top}
+th:first-child,td:first-child{text-align:left;padding-left:0}
+thead th{border-top:0;font-size:12px;font-weight:500;color:var(--muted)}
+td.ref,th.ref{color:var(--muted)}
+.hbars{display:grid;gap:14px;margin-top:12px}
+.hgroup h4{margin:0 0 6px;font-size:14px;font-weight:500;display:flex;justify-content:space-between;gap:12px}
+.hrow{display:grid;grid-template-columns:minmax(0,1fr) 56px;gap:2px 12px;align-items:center;font-size:14px;padding:3px 0}
+.hrow .lbl{color:var(--muted);overflow-wrap:anywhere}
+.hrow .val{text-align:right}
+.hrow .track{grid-column:1/3;height:8px;background:var(--track);border-radius:4px;position:relative}
+.hrow .track i{position:absolute;left:0;top:0;bottom:0;background:var(--accent);border-radius:4px}
+.hrow .track b{position:absolute;top:-3px;bottom:-3px;width:2px;background:var(--ref);border-radius:1px}
+.hrow .track.ref i{background:var(--ref)}
+.legend{display:flex;gap:16px;flex-wrap:wrap;font-size:13px;color:var(--muted);margin-top:10px}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.legend i{width:12px;height:8px;border-radius:2px;background:var(--accent);display:inline-block}
+.legend i.ref{background:var(--ref)}
+.legend i.tick{width:2px;height:12px;background:var(--ref)}
+.agent{display:grid;grid-template-columns:96px minmax(0,1fr);gap:4px 12px;align-items:center;padding:6px 0}
+.agent .name{font-weight:500}
+.agent .pair{display:grid;gap:4px}
+.agent .line{display:grid;grid-template-columns:minmax(0,1fr) 72px;gap:10px;align-items:center;font-size:13px}
+.agent .line .track{height:8px;background:var(--track);border-radius:4px;position:relative}
+.agent .line .track i{position:absolute;left:0;top:0;bottom:0;border-radius:4px;background:var(--accent)}
+.agent .line.ref .track i{background:var(--ref)}
+.agent .line span{text-align:right;color:var(--muted)}
+.agent .line:first-child span{color:var(--ink)}
+.replay{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
+.note{font-size:13px;color:var(--muted)}
+.tags{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.tags .pill{white-space:normal;text-align:left}
+footer{color:var(--faint);font-size:12px;padding:0 0 32px}
+.skeleton{color:var(--muted);padding:32px 0;text-align:center}
+@media (max-width:860px){.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.grid2,.ratio{grid-template-columns:minmax(0,1fr)}}
+@media (max-width:480px){
+  .wrap{padding:0 16px}main{padding-top:16px}.card{padding:16px}
+  .kpis{gap:12px}.big{font-size:26px}.ratio .headline{font-size:44px}
+  .checks li{grid-template-columns:minmax(0,1fr)}.agent{grid-template-columns:minmax(0,1fr)}
+  th,td{padding-left:8px}
+}
+@media (prefers-reduced-motion:reduce){.bar i{transition:none}}
+</style>
+</head>
+<body>
+<header class="top"><div class="wrap">
+  <div class="logos"><img data-asset="dell" alt="Dell Technologies"><img data-asset="intel" alt="Intel"></div>
+  <div class="brand"><b>Agent capacity measurement</b><span id="server-line">This server</span></div>
+  <span id="state" class="state">Connecting</span>
+</div></header>
+<main><div class="wrap stack" id="app"><p class="skeleton">Loading this server's status…</p></div></main>
+<footer><div class="wrap" id="foot">Results stay on this server. The page refreshes every 5 seconds.</div></footer>
+<script>
+(() => {
+'use strict';
+fetch('assets.json').then(r => r.json()).then(a => document.querySelectorAll('img[data-asset]').forEach(i => { if (a[i.dataset.asset]) i.src = a[i.dataset.asset]; })).catch(() => {});
+const RUNNING = new Set(['starting', 'preflight', 'start', 'load', 'analysis']);
+const PROBLEM = new Set(['refused', 'no-capacity', 'stopped', 'failed']);
+const app = document.getElementById('app');
+const D = {status: null, preflight: null, results: null, reference: null, calibration: null, live: null, replay: null, reachable: true};
+const cpuHistory = [];
+let lastKey = '', replayChecked = '';
+
+const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
+const fmt = (n, d = 0) => Number.isFinite(+n) ? (+n).toLocaleString('en-US', {minimumFractionDigits: d, maximumFractionDigits: d}) : '-';
+const fmtMax = (n, d = 1) => Number.isFinite(+n) ? (+n).toLocaleString('en-US', {maximumFractionDigits: d}) : '-';
+const plural = (n, w, ws = w + 's') => `${fmtMax(n, 2)} ${n === 1 ? w : ws}`;
+function dur(s) {
+  s = Math.max(0, Math.round(s));
+  const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60);
+  return h ? (m ? `${h} h ${String(m).padStart(2, '0')} min` : `${h} h`) : m ? `${m} min` : `${s % 60} s`;
+}
+const shortName = v => String(v || '').replace(/^Dell(?: Inc\.?)? (?=PowerEdge)/, '').trim();
+
+async function get(url) {
+  try {
+    const r = await fetch(url, {cache: 'no-store'});
+    if (!r.ok) return null;
+    const j = await r.json();
+    return j && !j.missing ? j : null;
+  } catch { return undefined; }   // network error: the tunnel or server is down
+}
+
+// Same rule as ratio_label() in bench/runner/results.py: nearest small whole-number sockets:GPUs.
+function ratioLabel(gpusPerSocket) {
+  if (!(gpusPerSocket > 0)) return '-';
+  if (gpusPerSocket < 0.25) return `${Math.round(1 / gpusPerSocket)}:1`;   // under a quarter GPU per socket: sockets per GPU
+  let best = null;
+  for (let c = 1; c < 5; c++) for (let g = 1; g < 9; g++) {
+    const k = [Math.abs(g / c - gpusPerSocket), c + g];
+    if (!best || k[0] < best.k[0] || (k[0] === best.k[0] && k[1] < best.k[1])) best = {c, g, k};
+  }
+  return `${best.c}:${best.g}`;
+}
+function gpuCalibration() {
+  const g = (D.calibration && D.calibration.gpu) || {}, s = (D.results && D.results.serving) || {};
+  return {
+    name: g.name || s.gpu || 'GPU', server: g.server || s.gpuServer || 'GPU server',
+    perServer: Number(g.gpus_per_server) || Number(s.gpusPerServer) || 8,
+    perGpu: Number(g.output_tokens_per_s_per_gpu) || Number(s.outputTokensPerSecondPerGpu) || NaN,
+    latency: g.latency_target || null, live: !!(D.calibration && D.calibration.gpu),
+  };
+}
+function sizing(tokensPerSecond, sockets) {
+  const g = gpuCalibration(), gpus = tokensPerSecond / g.perGpu, perSocket = gpus / Math.max(1, sockets);
+  return {gpus, perSocket, label: ratioLabel(perSocket), serversPerGpuServer: g.perServer / gpus, allocated: Math.ceil(gpus - 1e-9)};
+}
+
+function stateName() {
+  const st = D.status, ph = st && st.phase;
+  if (ph && RUNNING.has(ph)) return 'running';
+  if (D.results && D.results.capacity && (!ph || ph === 'done' || !PROBLEM.has(ph))) return 'done';
+  if (ph && PROBLEM.has(ph)) return 'problem';
+  return 'ready';
+}
+
+function setHeader(state) {
+  const sys = (D.results && D.results.platform) || (D.status && D.status.system) || (D.preflight && D.preflight.system) || null;
+  const line = sys ? [sys.system, sys.processors || (sys.processor && `${sys.sockets} x ${sys.processor}`)].filter(Boolean).join(', ') : 'This server';
+  document.getElementById('server-line').textContent = line;
+  const el = document.getElementById('state');
+  const labels = {ready: [D.preflight ? ((D.preflight.checks || []).some(c => c.state === 'fail') ? 'Not ready' : 'Ready to measure') : 'Checking', ''], running: ['Measuring', 'run'], done: ['Results ready', 'done'], problem: [{refused: 'Not ready', 'no-capacity': 'No capacity found', stopped: 'Stopped', failed: 'Run failed'}[D.status && D.status.phase] || 'Stopped', 'bad']};
+  const [text, cls] = labels[state];
+  el.textContent = text; el.className = 'state ' + cls;
+  if (sys && sys.system) document.title = `${shortName(sys.system)}: agent capacity`;
+}
+
+/* ---------- shared pieces ---------- */
+function serverCard(sys, title = 'This server') {
+  if (!sys) return `<section class="card"><h2>${esc(title)}</h2><p class="lead">Checking this server…</p></section>`;
+  const gbc = sys.memory_gb / Math.max(1, sys.cores);
+  return `<section class="card"><h2>${esc(title)}</h2>
+    <p class="lead">${esc(sys.system || 'This server')}${sys.kernel ? `, Linux ${esc(sys.kernel)}` : ''}</p>
+    <dl class="specs">
+      <div><dt>Processor</dt><dd style="font-size:15px">${esc(sys.processor || '-')}</dd></div>
+      <div><dt>Sockets</dt><dd>${fmt(sys.sockets)}</dd></div>
+      <div><dt>Physical cores</dt><dd>${fmt(sys.cores)}${sys.threads ? `<span class="k">${fmt(sys.threads)} threads</span>` : ''}</dd></div>
+      <div><dt>Memory</dt><dd>${fmt(sys.memory_gb)} GB<span class="k">${fmt(gbc, 1)} GB per core</span></dd></div>
+    </dl></section>`;
+}
+function checksCard(pf, title = 'Preflight checks') {
+  if (!pf) return `<section class="card"><h2>${esc(title)}</h2><p class="lead">Checking this server…</p></section>`;
+  const items = (pf.checks || []).map(c => `<li><span class="pill ${esc(c.state)}">${esc(c.state)}</span><div><b>${esc(c.check)}</b><span>${esc(c.detail)}</span></div></li>`).join('');
+  return `<section class="card"><h2>${esc(title)}</h2><p class="lead">${esc(pf.summary || '')}</p>
+    ${items ? `<ul class="checks">${items}</ul>` : ''}</section>`;
+}
+function stepLine(s) {
+  const ok = s.passed;
+  return `<li class="${ok ? 'done' : 'bad'}"><span class="dot"></span><div>Load step ${fmt(s.step)}: ${fmt(s.rate, 2)} workflows/s</div><span class="pill ${ok ? 'pass' : 'fail'}">${ok ? 'kept up' : 'fell behind'}</span></li>`;
+}
+
+/* ---------- states ---------- */
+function ready() {
+  const pf = D.preflight;
+  const failed = pf && (pf.checks || []).some(c => c.state === 'fail');
+  return `${D.reachable ? '' : unreachable()}
+    <div class="grid2">${serverCard(pf && pf.system)}
+    <section class="card"><h2>Measure this server</h2>
+      <p class="lead">Run this on the server, in the kit's folder. The run takes about 1 h 50 min and keeps running if your SSH session closes. This page follows it.</p>
+      <div class="cmd"><code>./measure</code><button type="button" data-copy="./measure">Copy</button></div>
+      ${failed ? `<p class="banner fail" style="margin-top:12px"><b>Preflight found a problem.</b> Fix the failed checks first. The run refuses a server that fails them.</p>` : ''}
+      <p class="note" style="margin-top:12px">The run finds the highest arrival rate this server keeps up with, then sizes the GPUs that rate needs.</p>
+    </section></div>
+    ${checksCard(pf)}`;
+}
+
+function running() {
+  const st = D.status, now = Date.now() / 1000, el = now - (st.started || now), budget = st.budget_s || 7200;
+  const cur = st.current, p = st.plan, steps = st.steps || [];
+  const phases = ['starting', 'preflight', 'start', 'load', 'analysis'], at = phases.indexOf(st.phase);
+  const row = (cls, label, right, detail = '') => `<li class="${cls}"><span class="dot"></span><div>${label}</div>${right}${detail ? `<div class="detail">${detail}</div>` : ''}</li>`;
+  const stage = (i, label) => at > i ? row('done', label, '<span class="pill pass">done</span>') : at === i ? row('now', label, '<span class="pill run">now</span>') : row('todo', label, '');
+  let curRow = '';
+  if (cur) {
+    const t = Math.max(0, now - cur.started), frac = Math.min(1, t / cur.hold_s);
+    curRow = row('now', `Load step ${fmt(cur.step)}: ${fmt(cur.rate, 2)} workflows/s`, '<span class="pill run">now</span>',
+      `<div class="bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(frac * 100)}" aria-label="Step progress"><i style="width:${(frac * 100).toFixed(1)}%"></i></div><div style="margin-top:6px">${dur(t)} of ${dur(cur.hold_s)} held${t > cur.hold_s ? ', judging and draining' : `, ${dur(cur.hold_s - t)} left in this step`}</div>`);
+  }
+  const lv = D.live || {}, cpu = lv.cpu_pct, used = lv.mem_used_gb, total = lv.mem_total_gb;
+  const stale = st.updated && now - st.updated > (cur ? cur.hold_s : 0) + 900;
+  const loadStage = at > 3 ? '' : row(at === 3 && !cur ? 'now' : 'todo', steps.length || cur ? 'Further load steps while time allows' : 'Load steps', '',
+    'Step 1 runs at the predicted rate. The next runs 8% higher if it kept up, or 8% lower if it fell behind. Later steps split the difference.');
+  const pts = cpuHistory.slice(-90);
+  const spark = pts.length > 1 ? (() => {
+    const xs = pts.map((v, i) => `${(i / (pts.length - 1) * 100).toFixed(2)},${(40 - v / 100 * 38).toFixed(2)}`);
+    return `<svg class="spark" viewBox="0 0 100 40" preserveAspectRatio="none" role="img" aria-label="CPU busy over the last ${pts.length} readings"><polygon class="area" points="0,40 ${xs.join(' ')} 100,40"/><polyline points="${xs.join(' ')}"/></svg>`;
+  })() : '';
+  return `${D.reachable ? '' : unreachable()}
+    ${stale ? `<p class="banner warn"><b>No update from the run for ${dur(now - st.updated)}.</b> Run <code>./measure status</code> on the server to check it.</p>` : ''}
+    <section class="card">
+      <div class="kpis">
+        <div class="kpi"><div class="k">Now</div><div style="font-size:17px">${esc(st.message || 'Starting')}</div></div>
+        <div class="kpi"><div class="k">Elapsed</div><div class="big">${dur(el)}</div></div>
+        <div class="kpi"><div class="k">Time left, at most</div><div class="big">${dur(budget - el)}</div><div class="sub">The run stops within ${dur(budget)} of starting.</div></div>
+        <div class="kpi"><div class="k">Load steps done</div><div class="big">${fmt(steps.length)}</div><div class="sub">${steps.filter(s => s.passed).length} kept up</div></div>
+      </div>
+      <div class="bar" style="margin-top:16px" role="progressbar" aria-label="Run progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(Math.min(1, el / budget) * 100)}"><i style="width:${(Math.min(1, el / budget) * 100).toFixed(1)}%"></i></div>
+    </section>
+    <div class="grid2">
+      <section class="card"><h2>Steps</h2><ul class="steps">
+        ${stage(1, 'Preflight: topology, memory, disk, idle check')}
+        ${stage(2, 'Start databases, retrieval services and samplers')}
+        ${steps.map(stepLine).join('')}${curRow}${loadStage}
+        ${stage(4, 'Analysis: results, CPU breakdown, replay')}
+      </ul></section>
+      <div class="stack">
+        <section class="card"><h2>This server now</h2>
+          <div class="gauge" style="margin-top:14px"><div class="k">CPU busy</div><div class="big">${cpu == null ? '-' : fmt(cpu, 0)}<small>%</small></div><div class="bar"><i style="width:${Math.min(100, cpu || 0)}%"></i></div></div>
+          ${spark}
+          <div class="gauge" style="margin-top:18px"><div class="k">Memory in use</div><div class="big">${used == null ? '-' : fmt(used, 0)}<small>of ${fmt(total)} GB</small></div><div class="bar"><i style="width:${total ? Math.min(100, used / total * 100) : 0}%"></i></div></div>
+        </section>
+        ${p ? `<section class="card"><h2>Plan for this server</h2><dl class="specs">
+          <div><dt>Instances</dt><dd>${fmt(p.instances)}</dd></div>
+          <div><dt>Application cores</dt><dd>${fmt(p.application_cores)}<span class="k">of ${fmt(p.cores)} cores</span></dd></div>
+          <div><dt>Predicted rate</dt><dd>${fmt(p.predicted_rate, 2)}<span class="k">workflows/s</span></dd></div>
+        </dl><p class="note" style="margin-top:12px">The prediction scales the reference server's rate by application cores. The load steps measure the real rate.</p></section>` : ''}
+      </div>
+    </div>`;
+}
+
+function problem() {
+  const st = D.status, ph = st.phase;
+  const title = {refused: 'This server did not pass preflight', 'no-capacity': 'No load step kept up', stopped: 'The run was stopped', failed: 'The run failed'}[ph];
+  const next = {
+    refused: 'Fix the failed checks below, then run <code>./measure</code> again. <code>./measure --force</code> runs anyway, and its result may not hold.',
+    'no-capacity': 'The server fell behind even at the lowest rate tried. Stop anything else running on it, then run <code>./measure</code> again. <code>./measure status</code> shows the last output.',
+    stopped: 'Run <code>./measure</code> to start a new run. It starts from the beginning.',
+    failed: 'Run <code>./measure status</code> on the server to see the last output, then run <code>./measure</code> again.',
+  }[ph];
+  const steps = st.steps || [];
+  return `${D.reachable ? '' : unreachable()}
+    <section class="card"><h2>${esc(title)}</h2>
+      ${st.message ? `<p class="banner ${ph === 'stopped' ? 'info' : 'fail'}" style="margin-top:12px">${esc(st.message)}</p>` : ''}
+      <h3 style="margin-top:18px">What to do next</h3><p style="margin-top:6px">${next}</p>
+      ${D.results ? `<p class="note" style="margin-top:12px">Results from an earlier run remain on this server. They show again when the next run finishes.</p>` : ''}
+    </section>
+    ${steps.length ? `<section class="card"><h2>Load steps in this run</h2><ul class="steps">${steps.map(stepLine).join('')}</ul></section>` : ''}
+    <div class="grid2">${serverCard((st.preflight && st.preflight.system) || (D.preflight && D.preflight.system))}${checksCard(st.preflight || D.preflight)}</div>`;
+}
+
+function done() {
+  const R = D.results, P = R.platform, C = R.capacity, K = R.kit || {}, ref = D.reference;
+  const cal = gpuCalibration(), mine = sizing(C.outputTokensPerSecond, P.sockets);
+  const refS = ref ? sizing(ref.outputTokensPerSecond, ref.sockets || 2) : null;
+  const refName = ref ? shortName(ref.system) : '';
+  const tags = [
+    K.memory_bound ? `<span class="pill warn">Memory-bound</span>` : '',
+    K.bracketed === false ? `<span class="pill info">Capacity is at least this rate (every step kept up)</span>` : '',
+  ].join('');
+  const lat = cal.latency && cal.latency.p95_time_per_output_token_ms ? ` at a p95 time per output token of ${fmt(cal.latency.p95_time_per_output_token_ms)} ms${cal.latency.time_to_first_token_s ? ` and first token within ${fmt(cal.latency.time_to_first_token_s)} s` : ''}` : '';
+
+  // CPU breakdown, grouped, with the reference share as a tick.
+  const refPiece = Object.fromEntries(((ref && ref.cpuBreakdown) || []).map(b => [b.piece, b.share]));
+  const groups = [];
+  for (const b of C.cpuBreakdown || []) { let g = groups.find(x => x.name === b.group); if (!g) groups.push(g = {name: b.group, rows: [], total: 0}); g.rows.push(b); g.total += b.share; }
+  groups.sort((a, b) => b.total - a.total);
+  const maxShare = Math.max(1, ...(C.cpuBreakdown || []).map(b => Math.max(b.share, refPiece[b.piece] || 0)));
+  const breakdown = groups.map(g => `<div class="hgroup"><h4><span>${esc(g.name)}</span><span>${fmt(g.total, 1)}%</span></h4>${g.rows.map(b => `<div class="hrow"><span class="lbl">${esc(b.piece)}</span><span class="val">${fmt(b.share, 1)}%</span><div class="track" title="${esc(b.piece)}: ${fmt(b.share, 1)}%${refPiece[b.piece] != null ? `, ${esc(refName)} ${fmt(refPiece[b.piece], 1)}%` : ''}"><i style="width:${b.share / maxShare * 100}%"></i>${refPiece[b.piece] != null ? `<b style="left:calc(${refPiece[b.piece] / maxShare * 100}% - 1px)"></b>` : ''}</div></div>`).join('')}</div>`).join('');
+
+  // Per-agent CPU work per workflow.
+  const refAgent = Object.fromEntries(((ref && ref.agents) || []).map(a => [a.name, a.coreSecondsPerWorkflow]));
+  const maxAgent = Math.max(1, ...(R.archetypes || []).map(a => Math.max(a.coreMs / 1000, refAgent[a.name] || 0)));
+  const agents = (R.archetypes || []).map(a => `<div class="agent"><span class="name">${esc(a.name)}</span><div class="pair">
+      <div class="line"><div class="track"><i style="width:${a.coreMs / 1000 / maxAgent * 100}%"></i></div><span>${fmtMax(a.coreMs / 1000, a.coreMs < 10000 ? 2 : 1)} s</span></div>
+      ${refAgent[a.name] != null ? `<div class="line ref"><div class="track"><i style="width:${refAgent[a.name] / maxAgent * 100}%"></i></div><span>${fmtMax(refAgent[a.name], 2)} s</span></div>` : ''}
+    </div></div>`).join('');
+
+  const rows = [
+    ['Processors', esc(P.processors), ref ? esc(ref.processors) : ''],
+    ['Physical cores', fmt(P.cores), ref ? fmt(ref.cores) : ''],
+    ['Workflows/s at capacity', fmt(C.workflowsPerSecond, 2), ref ? fmt(ref.workflowsPerSecond, 2) : ''],
+    ['Resident agents', fmt(C.resident), ref ? fmt(ref.resident) : ''],
+    ['Busy cores', `${fmt(C.busyCores, 1)} (${fmt(C.cpuPercent)}%)`, ref ? `${fmt(ref.busyCores, 1)} (${fmt(ref.cpuPercent)}%)` : ''],
+    ['Memory, mean / peak', `${fmt(C.memoryGB)} / ${fmt(C.memoryPeakGB)} GB`, ref ? `${fmt(ref.memoryGB)} / ${fmt(ref.memoryPeakGB)} GB` : ''],
+    ['Output tokens/s', fmt(C.outputTokensPerSecond), ref ? fmt(ref.outputTokensPerSecond) : ''],
+    ['Model calls/s', fmt(C.callsPerSecond, 1), ref ? fmt(ref.callsPerSecond, 1) : ''],
+    ['GPUs per server', fmt(mine.gpus, 2), refS ? fmt(refS.gpus, 2) : ''],
+    ['CPU sockets to GPUs', mine.label, refS ? refS.label : ''],
+    [`Servers per ${esc(shortName(cal.server))}`, fmt(mine.serversPerGpuServer, 1), refS ? fmt(refS.serversPerGpuServer, 1) : ''],
+  ];
+
+  return `${D.reachable ? '' : unreachable()}
+    <section class="card">
+      <div class="replay"><div><h1>${esc(shortName(P.system))} agent capacity</h1>
+        <p class="lead">${esc(P.processors)}, ${fmt(P.sockets)} ${P.sockets === 1 ? 'socket' : 'sockets'}, ${fmt(P.cores)} cores, ${fmt(P.memoryGB)} GB, ${esc((R.definitions || {}).mix || '')} mix</p></div>
+        <a class="button primary" id="replay-link" href="./" ${D.replay ? '' : 'hidden'}>Open the replay</a></div>
+      ${tags ? `<div class="tags">${tags}</div>` : ''}
+      ${K.memory_bound ? `<p class="banner warn" style="margin-top:12px"><b>Memory-bound.</b> This server has under 5 GB of memory per core, so memory may limit capacity before the CPU does.</p>` : ''}
+      <div class="kpis" style="margin-top:20px">
+        <div class="kpi"><div class="k">Capacity</div><div class="big">${fmt(C.workflowsPerSecond, 2)}<small>workflows/s</small></div><div class="sub">${K.bracketed === false ? 'At least this rate' : 'Highest rate that kept up'}</div></div>
+        <div class="kpi"><div class="k">Resident agents</div><div class="big">${fmt(C.resident)}</div><div class="sub">Workflows in flight</div></div>
+        <div class="kpi"><div class="k">Busy cores</div><div class="big">${fmt(C.busyCores, 1)}<small>of ${fmt(P.cores)}</small></div><div class="bar"><i style="width:${Math.min(100, C.cpuPercent)}%"></i></div><div class="sub">${fmt(C.cpuPercent)}% of physical cores</div></div>
+        <div class="kpi"><div class="k">Memory</div><div class="big">${fmt(C.memoryGB)}<small>GB mean</small></div><div class="bar"><i style="width:${Math.min(100, C.memoryGB / P.memoryGB * 100)}%"></i></div><div class="sub">${fmt(C.memoryPeakGB)} GB peak of ${fmt(P.memoryGB)} GB</div></div>
+      </div>
+    </section>
+
+    <section class="card"><h2>CPU-to-GPU ratio</h2>
+      <div class="ratio" style="margin-top:16px">
+        <div>
+          <div class="headline">${mine.label}<small>CPU sockets to GPUs, nearest whole-number ratio</small></div>
+          <dl class="specs" style="margin-top:20px">
+            <div><dt>GPUs per server</dt><dd>${fmt(mine.gpus, 2)}</dd></div>
+            <div><dt>GPUs per socket</dt><dd>${fmt(mine.perSocket, 2)}</dd></div>
+            <div><dt>Servers per ${esc(shortName(cal.server))}</dt><dd>${fmt(mine.serversPerGpuServer, 1)}<span class="k">${fmt(cal.perServer)} GPUs each</span></dd></div>
+          </dl>
+          <h3 style="margin-top:20px">Model demand at capacity</h3>
+          <dl class="specs"><div><dt>Output tokens/s</dt><dd>${fmt(C.outputTokensPerSecond)}</dd></div><div><dt>Model calls/s</dt><dd>${fmt(C.callsPerSecond, 1)}</dd></div></dl>
+          <p class="note" style="margin-top:14px">${fmt(C.outputTokensPerSecond)} output tokens/s ÷ ${fmt(cal.perGpu)} per ${esc(cal.name)}${lat} = ${fmt(mine.gpus, 2)} GPUs. ${cal.live ? 'The GPU figures come from calibration.yaml as it is now. Edit it and reload to resize.' : 'calibration.yaml is not readable now, so the page uses the serving values recorded with the result.'}</p>
+        </div>
+        <div style="min-width:0">
+          <table><thead><tr><th></th><th>This server</th>${ref ? `<th class="ref">${esc(refName)}, published</th>` : ''}</tr></thead>
+          <tbody>${rows.map(r => `<tr><td>${r[0]}</td><td>${r[1]}</td>${ref ? `<td class="ref">${r[2]}</td>` : ''}</tr>`).join('')}</tbody></table>
+        </div>
+      </div>
+      <p class="note" style="margin-top:16px">${calNote(R)}</p>
+    </section>
+
+    <div class="grid2">
+      <section class="card"><h2>Where the CPU goes</h2><p class="lead">Share of busy CPU time at capacity, by job step and service.</p>
+        <div class="hbars">${breakdown}</div>
+        ${ref ? `<div class="legend"><span><i></i>This server</span><span><i class="tick"></i>${esc(refName)}, published</span></div>` : ''}
+      </section>
+      <section class="card"><h2>CPU work per workflow</h2><p class="lead">Core-seconds of CPU for one workflow of each agent type.</p>
+        <div style="margin-top:12px">${agents}</div>
+        <div class="legend"><span><i></i>This server, measured in the mix</span>${ref ? `<span><i class="ref"></i>${esc(refName)}, each agent measured alone</span>` : ''}</div>
+        <p class="note" style="margin-top:10px">Jobs inside the mix run on busier cores, so their CPU time reads higher than the same job run alone.</p>
+      </section>
+    </div>
+
+    ${(K.steps || []).length ? `<section class="card"><h2>Load steps</h2><ul class="steps">${K.steps.map(stepLine).join('')}</ul>
+      <p class="note" style="margin-top:8px">Each step held one arrival rate for ${dur(K.hold_s || 1800)} and was judged over ${K.window_s ? `${fmt(K.window_s[0])} to ${fmt(K.window_s[1])} s` : 'its steady window'}. The capacity is the highest rate that kept up.</p></section>` : ''}
+
+    <section class="card replay"><div><h2>The replay</h2><p class="lead">${D.replay ? 'Size other agent mixes and populations from this server\'s measurements.' : 'The replay page is not built yet. It appears here after the run\'s analysis builds it.'}</p></div>
+      <a class="button primary" href="./" ${D.replay ? '' : 'hidden'}>Open the replay</a></section>`;
+}
+
+function calNote(R) {
+  const K = R.kit || {}, model = (R.serving || {}).model || '', mix = (R.definitions || {}).mix || '';
+  const cal = D.calibration || {}, nowModel = cal.model && cal.model.name, nowMix = cal.mix && cal.mix.name;
+  const changed = (nowModel && nowModel !== model) || (nowMix && nowMix !== mix);
+  return `Measured with model ${esc(model)} and the ${esc(mix)} mix. Calibration hash recorded with this result: <span class="mono">${esc(K.calibration_hash || '-')}</span>.`
+    + (changed ? ` calibration.yaml now names model ${esc(nowModel || model)} and the ${esc(nowMix || mix)} mix. Those take a new run to measure.` : ' A change to the model or mix in calibration.yaml needs a new run.');
+}
+
+function unreachable() {
+  return `<p class="banner warn"><b>Cannot reach the server.</b> Check that the SSH tunnel is open: <code>ssh -L 8766:127.0.0.1:8766 &lt;server&gt;</code></p>`;
+}
+
+/* ---------- loop ---------- */
+async function poll() {
+  const [status, preflight, results] = await Promise.all([get('status.json'), get('preflight.json'), get('results.json')]);
+  D.reachable = !(status === undefined && preflight === undefined && results === undefined);
+  if (status !== undefined) D.status = status;
+  if (preflight !== undefined) D.preflight = preflight;
+  if (results !== undefined) D.results = results;
+  const state = stateName();
+  if (state === 'running') {
+    const live = await get('live.json');
+    if (live) { D.live = live; if (live.cpu_pct != null && live.ts !== (cpuHistory.ts || 0)) { cpuHistory.push(live.cpu_pct); cpuHistory.ts = live.ts; if (cpuHistory.length > 200) cpuHistory.shift(); } }
+  }
+  if (state === 'done') {
+    const [calibration, reference] = await Promise.all([get('calibration.json'), D.reference ? Promise.resolve(D.reference) : get('reference.json')]);
+    if (calibration !== undefined) D.calibration = calibration && !calibration.error ? calibration : null;
+    if (reference) D.reference = reference;
+    const runKey = (D.results.kit || {}).run + '';
+    if (replayChecked !== runKey) {
+      try { const r = await fetch('replay.html', {cache: 'no-store'}); D.replay = r.ok; r.body && r.body.cancel(); replayChecked = r.ok ? runKey : ''; } catch { D.replay = false; }
+    }
+  }
+  render(state);
+}
+
+function render(state) {
+  setHeader(state);
+  // Ready, problem and done pages re-render only when their inputs change (keeps scroll and selection).
+  const key = state === 'running' ? Math.random() : JSON.stringify([state, D.status, D.preflight, D.results && D.results.kit, D.calibration, !!D.reference, D.replay, D.reachable]);
+  if (key === lastKey) return;
+  lastKey = key;
+  app.innerHTML = {ready, running, problem, done}[state]();
+  const run = (D.results && D.results.kit && D.results.kit.run) || (D.status && D.status.run);
+  document.getElementById('foot').textContent = `Results stay on this server. The page refreshes every 5 seconds.${run ? ` Run ${run}.` : ''}`;
+}
+
+app.addEventListener('click', e => {
+  const b = e.target.closest('[data-copy]');
+  if (!b) return;
+  const done = () => { b.textContent = 'Copied'; setTimeout(() => { b.textContent = 'Copy'; }, 1500); };
+  try { navigator.clipboard.writeText(b.dataset.copy).then(done, () => {}); } catch {}
+});
+
+poll();
+setInterval(poll, 5000);
+})();
+</script>
+</body>
+</html>

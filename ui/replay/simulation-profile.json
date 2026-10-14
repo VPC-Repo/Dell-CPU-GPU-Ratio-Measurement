@@ -1,0 +1,33 @@
+{
+  "version": "v2.3",
+  "about": "Reference constants for the replay page's sizing model. ui/replay/build.cjs replaces costs[].sandboxCoreSeconds with this server's CPU breakdown and adds timings from its run; everything else here is a reference constant from the published reference server and the workflow definitions. referenceAgents (published per-agent CPU, calls and tokens, and the reference run's mean workflow lifetimes) stand in for an agent type the measured mix left out.",
+  "serviceTarget": 0.8,
+  "memoryTarget": 0.8,
+  "analystJobGB": 40,
+  "analystMemoryShare": 0.9,
+  "analystActiveFraction": 0.107,
+  "serviceCosts": {"rerankPair": 0.0066, "queryEmbedding": 0.13},
+  "costs": [
+    {"name":"Task","sandboxCoreSeconds":0,"pairs":32,"queryCount":1,"ingestCoreSeconds":0},
+    {"name":"Research","sandboxCoreSeconds":1.6,"pairs":1152,"queryCount":9,"ingestCoreSeconds":0},
+    {"name":"Ingestion","sandboxCoreSeconds":82.2,"pairs":0,"queryCount":0,"ingestCoreSeconds":14},
+    {"name":"Analyst","sandboxCoreSeconds":194.4,"pairs":128,"queryCount":2,"ingestCoreSeconds":0},
+    {"name":"Code","sandboxCoreSeconds":147.3,"pairs":192,"queryCount":3,"ingestCoreSeconds":0}
+  ],
+  "referenceAgents": [
+    {"name":"Task","coreMs":650,"modelCalls":4,"outputTokens":1390,"meanSeconds":21.3},
+    {"name":"Research","coreMs":7800,"modelCalls":20,"outputTokens":16100,"meanSeconds":264.5},
+    {"name":"Ingestion","coreMs":78000,"modelCalls":7,"outputTokens":3670,"meanSeconds":184.0},
+    {"name":"Analyst","coreMs":299000,"modelCalls":17,"outputTokens":13460,"meanSeconds":596.4},
+    {"name":"Code","coreMs":137000,"modelCalls":17,"outputTokens":12820,"meanSeconds":451.3}
+  ],
+  "assumptions": [
+    "Agent counts are fixed working pools across the deployment. Each completed workflow is replaced by the same agent type.",
+    "Mean workflow lifetimes come from this server's completed workflows at its capacity step, scaled together to its measured resident agents and output tokens per second. They are reference targets, not predicted tail latencies.",
+    "Core pools are sized to each mix across the deployment. Service cores follow the reranking, query-embedding and document-embedding cost laws at the planning target. Application cores scale from this server's measured point, so that point needs exactly one server per measured resident population. Application sizing weights sandbox demand 85 percent and call-related demand 15 percent. This extrapolation needs spot checks.",
+    "Resource targets are 80 percent for dedicated services and memory. They are planning assumptions.",
+    "Memory assigns 90 percent of this server's measured mean footprint to analyst jobs and 10 percent to a fixed per-server residual, a modeling assumption. The 40 GB job size sets an effective active-job fraction calibrated to that footprint. Non-analyst memory growth and memory bandwidth are not modeled.",
+    "GPU counts are arithmetic on the serving rate in calibration.yaml. Output demand is not GPU utilization telemetry. Model latency is held at the calibration target, assuming the required GPU capacity is supplied.",
+    "Fleets of several servers are sized as independent copies of the measured server."
+  ]
+}

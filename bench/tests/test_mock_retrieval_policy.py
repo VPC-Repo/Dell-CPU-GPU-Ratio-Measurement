@@ -1,0 +1,132 @@
+"""Workload v16.1: retrieval policy by archetype and grounded citations.
+
+The researcher retrieves in every worker; the comparison retrieves in its
+research worker only; the digest never retrieves. A worker that retrieved
+cites the [chunk-N] ids it was actually handed.
+"""
+from fastapi.testclient import TestClient
+
+from tests.test_workload_v15 import _mock_router
+
+RESEARCH_SYS = "You are a research specialist. Gather facts."
+ANALYSIS_SYS = "You are an analysis specialist. Compare options."
+RESEARCHER_OBJ = "Research the topic: Using ONLY the field notes below, brief on X"
+COMPARISON_OBJ = "Analyze the research findings for: Using ONLY the measurements below, compare INT8 and FP32"
+DIGEST_OBJ = "Write the final brief for: Summarize the week's changes"
+TOOLS = [{"type": "function", "function": {"name": n, "parameters": {}}}
+         for n in ("bench_retrieve", "bench_record")]
+EXEC_TOOLS = [{"type": "function", "function": {"name": n, "parameters": {}}}
+              for n in ("bench_retrieve", "bench_execute", "bench_record")]
+ANALYST_TOOLS = [{"type": "function", "function": {"name": n, "parameters": {}}}
+                 for n in ("bench_execute", "bench_record")]
+ANALYST_OBJ = "Research the topic: Using ONLY the dataset available through the execution tool, analyze one day"
+WRITING_SYS = "You are a technical writing specialist. Write the report."
+
+
+def _client():
+    return TestClient(_mock_router().app)
+
+
+def _first_tool(client, system, obj, tools=TOOLS):
+    r = client.post("/v1/chat/completions", json={
+        "model": "auto", "tools": tools,
+        "messages": [{"role": "system", "content": system},
+                     {"role": "user", "content": obj}]})
+    assert r.status_code == 200, r.text
+    msg = r.json()["choices"][0]["message"]
+    calls = msg.get("tool_calls") or []
+    return calls[0]["function"]["name"] if calls else None
+
+
+def test_researcher_retrieves_in_every_worker():
+    c = _client()
+    assert _first_tool(c, RESEARCH_SYS, RESEARCHER_OBJ) == "bench_retrieve"
+    assert _first_tool(c, ANALYSIS_SYS, RESEARCHER_OBJ) == "bench_retrieve"
+
+
+def test_comparison_retrieves_in_research_worker_only():
+    c = _client()
+    assert _first_tool(c, RESEARCH_SYS, COMPARISON_OBJ) == "bench_retrieve"
+    assert _first_tool(c, ANALYSIS_SYS, COMPARISON_OBJ) == "bench_record"
+
+
+def test_digest_only_records():
+    c = _client()
+    record_only = [t for t in TOOLS if t["function"]["name"] == "bench_record"]
+    assert _first_tool(c, ANALYSIS_SYS, DIGEST_OBJ, record_only) == "bench_record"
+
+
+def test_worker_cites_the_chunks_it_was_given():
+    c = _client()
+    messages = [
+        {"role": "system", "content": RESEARCH_SYS},
+        {"role": "user", "content": RESEARCHER_OBJ},
+        {"role": "assistant", "content": None, "tool_calls": [
+            {"id": "c1", "type": "function",
+             "function": {"name": "bench_retrieve", "arguments": "{}"}}]},
+        {"role": "tool", "tool_call_id": "c1", "name": "bench_retrieve",
+         "content": "[bench_retrieve] 12 chunks\n[chunk-4021] alpha\n"
+                    "[chunk-77] beta\n[chunk-90210] gamma\nRETRIEVAL COMPLETE"},
+        {"role": "assistant", "content": None, "tool_calls": [
+            {"id": "c2", "type": "function",
+             "function": {"name": "bench_record", "arguments": "{}"}}]},
+        {"role": "tool", "tool_call_id": "c2", "name": "bench_record",
+         "content": "RECORD COMMITTED"},
+    ]
+    r = c.post("/v1/chat/completions",
+               json={"model": "auto", "tools": TOOLS, "messages": messages})
+    msg = r.json()["choices"][0]["message"]
+    assert not msg.get("tool_calls")
+    assert "Sources: [chunk-4021] [chunk-77] [chunk-90210]." in msg["content"]
+
+
+def _first_call(client, system, obj, tools):
+    r = client.post("/v1/chat/completions", json={
+        "model": "auto", "tools": tools,
+        "messages": [{"role": "system", "content": system},
+                     {"role": "user", "content": obj}]})
+    msg = r.json()["choices"][0]["message"]
+    calls = msg.get("tool_calls") or []
+    return (calls[0]["function"]["name"], calls[0]["function"]["arguments"]) if calls else (None, None)
+
+
+def test_analyst_runs_a_heavy_job_in_every_worker():
+    """v17: the data analyst executes (heavy) in research, analysis, and
+    writing workers alike, and never retrieves."""
+    c = _client()
+    for sys_ in (RESEARCH_SYS, ANALYSIS_SYS, WRITING_SYS):
+        name, args = _first_call(c, sys_, ANALYST_OBJ, ANALYST_TOOLS)
+        assert name == "bench_execute" and '"heavy"' in args
+
+
+def test_comparison_executes_light_in_its_analysis_worker_only():
+    c = _client()
+    assert _first_call(c, RESEARCH_SYS, COMPARISON_OBJ, EXEC_TOOLS)[0] == "bench_retrieve"
+    name, args = _first_call(c, ANALYSIS_SYS, COMPARISON_OBJ, EXEC_TOOLS)
+    assert name == "bench_execute" and '"light"' in args
+    assert _first_call(c, WRITING_SYS, COMPARISON_OBJ, EXEC_TOOLS)[0] == "bench_record"
+
+
+def test_task_agent_plans_exactly_one_worker():
+    """v17 task agent: the planner delegates one general-purpose worker and
+    then synthesizes; three-subtask archetypes are untouched."""
+    c = _client()
+    obj = "Handle this single support ticket. Plan EXACTLY one worker subtask and no more."
+    task_tools = [{"type": "function", "function": {"name": "task", "parameters": {}}}]
+    r = c.post("/v1/chat/completions", json={
+        "model": "auto", "tools": task_tools,
+        "messages": [{"role": "system", "content": "You are the orchestrator."},
+                     {"role": "user", "content": obj}]})
+    msg = r.json()["choices"][0]["message"]
+    calls = msg.get("tool_calls") or []
+    assert len(calls) == 1 and calls[0]["function"]["name"] == "task"
+    assert '"general-purpose"' in calls[0]["function"]["arguments"]
+    # after one delegation closes, the planner synthesizes instead of delegating again
+    done = [{"role": "system", "content": "You are the orchestrator."},
+            {"role": "user", "content": obj},
+            {"role": "assistant", "content": None, "tool_calls": [
+                {"id": "t1", "type": "function", "function": {"name": "task", "arguments": calls[0]["function"]["arguments"]}}]},
+            {"role": "tool", "tool_call_id": "t1", "name": "task", "content": '{"result": "filed and classified", "confidence": 0.9}'}]
+    r2 = c.post("/v1/chat/completions", json={"model": "auto", "tools": task_tools, "messages": done})
+    msg2 = r2.json()["choices"][0]["message"]
+    assert not msg2.get("tool_calls") and msg2.get("content")

@@ -1,0 +1,40 @@
+# Model calibration for the CPU-to-GPU ratio.
+#
+# gpu:   arithmetic only. Edit and reload the page; no new run is needed.
+# model: shapes the load the server is measured under. A change needs a new run
+#        (./measure); the page flags a result measured under different settings.
+# mix:   the arrival mix, per twelve incoming workflows. A change needs a new run.
+
+gpu:
+  name: NVIDIA RTX PRO 6000 Blackwell Server Edition
+  server: PowerEdge XE7740
+  gpus_per_server: 8
+  # Output tokens per second one GPU serves for this model while every reply
+  # meets the latency target below (measured on one GPU of a PowerEdge XE7740).
+  output_tokens_per_s_per_gpu: 4020
+  latency_target:
+    p95_time_per_output_token_ms: 25
+    time_to_first_token_s: 2
+
+model:
+  name: gpt-oss-20b (low reasoning)
+  # Recorded calls: per call position, the latency and token counts measured
+  # against the model at the concurrency below. No prompt or answer text.
+  profile: calibration/profile-gpt-oss-20b.jsonl
+  concurrency: 2
+  # recorded: each call waits its recorded latency (as the published R770 results).
+  # modeled:  each call waits ttft + output/decode + input/prefill on the recorded token counts.
+  timing: recorded
+  modeled:
+    ttft_ms: 200
+    decode_tokens_per_s: 55
+    prefill_tokens_per_s: 30000
+
+mix:
+  name: Enterprise
+  tile:
+    task: 6
+    research: 1
+    ingestion: 1
+    analyst: 2
+    code: 2

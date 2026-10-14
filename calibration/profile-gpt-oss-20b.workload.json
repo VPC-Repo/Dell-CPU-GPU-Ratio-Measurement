@@ -1,0 +1,5 @@
+{
+ "note": "Model-based judgments per workflow for the v2.3 workflows. Judgments are model calls the GPU tier serves but the measured run does not make, so their output tokens (the profile's mean judge reply per agent type) are added to the tokens the run served.",
+ "definitionVersion": "v2.3",
+ "judge_calls_per_workflow": {"task_ticket": 1, "deep_research": 4, "ingestion": 2, "analyst_large": 4, "code_agent": 4}
+}

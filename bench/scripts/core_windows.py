@@ -1,0 +1,77 @@
+"""Per-core occupancy over a series' plateau windows from an mpstat log.
+
+    python3 scripts/core_windows.py <series-dir> <mpstat-log> [allocation.env]
+
+For each rate in the series (window: evidence stamp +600 s to +1500 s by
+default, WINDOW_LO/WINDOW_HI to override; the default skips the transient,
+since the slowest archetype takes about nine minutes to reach steady state), a
+physical core's occupancy per sample is the busier of its two threads,
+and the figure reported is the MEAN over the window's samples: the
+time-average of busy cores, which is what a ratio needs. (An earlier
+version took the median per core, which reads a core busy 55% of the
+time as 100% and overstated occupancy by 5 to 10 points.) Groups follow
+the allocation file when given. Times are read as UTC (scripts/mpstat_log.py).
+"""
+import datetime as dt
+import glob
+import os
+import re
+import statistics as st
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import mpstat_log  # noqa: E402
+
+series, log = sys.argv[1], sys.argv[2]
+alloc = sys.argv[3] if len(sys.argv) > 3 else "data/capacity/retrieval/allocation.env"
+# A physical core is a (package, core_id) pair: core ids repeat on every
+# socket of a multi-socket box. CORE_SOCKETS (e.g. "0") limits the count to
+# those sockets, for a run confined to one CPU. The topology is the run's
+# own topology.txt beside the log when present, else this machine's /sys.
+only = {int(s) for s in os.getenv("CORE_SOCKETS", "").split(",") if s.strip()}
+cores = mpstat_log.topology(log, only or None)
+
+
+def cpuset(s):
+    out = set()
+    for part in (s or "").split(","):
+        if "-" in part:
+            a, b = part.split("-"); out.update(range(int(a), int(b) + 1))
+        elif part.strip():
+            out.add(int(part))
+    return out
+
+
+env = {}
+if os.path.exists(alloc):
+    env = dict(l.strip().split("=", 1) for l in open(alloc) if "=" in l)
+groups = {"reranker": cpuset(env.get("RERANK_CPUS")), "embedder": cpuset(env.get("EMBED_CPUS")),
+          "ingest": cpuset(env.get("INGEST_EMBED_CPUS"))}
+def grp(cpus):
+    for g, s in groups.items():
+        if s and any(c in s for c in cpus):
+            return g
+    return "rest"
+gof = {cid: grp(cpus) for cid, cpus in cores.items()}
+
+# UTC epochs; the log's zone is MPSTAT_TZ, a timezone.txt beside it, or this machine's
+blocks = sorted(mpstat_log.samples(log).items())
+
+rates = []
+for f in glob.glob(f"{series}/rate-*-i1-evidence-*.jsonl.gz"):
+    b = f.split("/")[-1]
+    r = re.search(r"rate-([0-9.]+)-", b).group(1)
+    t = dt.datetime.strptime(re.search(r"(\d{8}-\d{6})", b).group(1), "%Y%m%d-%H%M%S").replace(tzinfo=dt.timezone.utc).timestamp()
+    rates.append((float(r), r, t + float(os.getenv("WINDOW_LO", "600")), t + float(os.getenv("WINDOW_HI", "1500"))))
+for _, r, a, b in sorted(rates):
+    sel = [blk for ts, blk in blocks if a <= ts <= b]
+    if not sel:
+        print(f"rate {r}/s: no samples"); continue
+    occ = {cid: st.mean(max(blk.get(c, 0.0) for c in cpus) for blk in sel) for cid, cpus in cores.items()}
+    thr = {cid: st.mean(sum(blk.get(c, 0.0) for c in cpus) / len(cpus) for blk in sel) for cid, cpus in cores.items()}
+    parts = []
+    for g in ("reranker", "embedder", "ingest", "rest"):
+        ids = [cid for cid in cores if gof[cid] == g]
+        if ids:
+            parts.append(f"{g} {len(ids)}c occ {st.mean(occ[c] for c in ids):.0f}% thr {st.mean(thr[c] for c in ids):.0f}%")
+    print(f"rate {r}/s: samples={len(sel)} box occupancy {st.mean(occ.values()):.1f}% ({st.mean(occ.values()) / 100 * len(cores):.1f} cores; threads {st.mean(thr.values()):.1f}%) | " + " | ".join(parts))

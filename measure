@@ -1,0 +1,29 @@
+#!/bin/bash
+# The one instruction: measure this server (about 1 h 50 min).
+#
+#   ./measure            start the run in the background and follow it
+#   ./measure status     where the run is
+#   ./measure follow     follow the run's progress again
+#   ./measure stop       stop the run
+#   ./measure --force    run even if the preflight check fails
+#
+# The run continues if this terminal or SSH session closes. Results stay on
+# this server and on the page: ssh -L 8766:127.0.0.1:8766 <this server>,
+# then open http://127.0.0.1:8766 on your laptop.
+set -euo pipefail
+cd "$(dirname "$0")"
+# Right after ./install.sh installs Docker, this login session isn't in the
+# docker group yet, so use sudo the way the installer did.
+DOCKER="docker"; docker info >/dev/null 2>&1 || DOCKER="sudo docker"
+X="$DOCKER compose exec -T -u bench bench"
+case "${1:-start}" in
+  status) $X /opt/bench/.venv/bin/python -m runner.ctl status ;;
+  follow) exec $X /opt/bench/.venv/bin/python -m runner.ctl follow ;;
+  stop)   $X /opt/bench/.venv/bin/python -m runner.ctl stop ;;
+  start|--force|--*)
+    [ "${1:-}" = start ] && shift || true
+    $DOCKER compose ps --status running bench | grep -q bench || $DOCKER compose up -d bench
+    $X /opt/bench/.venv/bin/python -m runner.ctl start "$@"
+    exec $X /opt/bench/.venv/bin/python -m runner.ctl follow ;;
+  *) sed -n '2,13p' "$0"; exit 1 ;;
+esac

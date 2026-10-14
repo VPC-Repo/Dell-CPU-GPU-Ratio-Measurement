@@ -1,0 +1,41 @@
+# One service: the measurement container. It serves the page on
+# 127.0.0.1:8766 (reach it through an SSH tunnel) and runs ./measure.
+#
+# ./install.sh builds both images on this server from this repository.
+# Set BENCH_IMAGE and EMBED_IMAGE in .env to use prebuilt images instead
+# (./install.sh --pull).
+#
+# It is privileged on purpose (see SECURITY.md): the run pins processes to
+# cores, starts its databases and embedders as sibling containers, isolates
+# each sandboxed job in its own network namespace, and samples every process
+# on the host.
+name: ratio
+services:
+  bench:
+    image: ${BENCH_IMAGE:-ratio-bench:local}
+    build:
+      context: .
+      dockerfile: bench/Dockerfile
+    pull_policy: missing
+    privileged: true
+    network_mode: host
+    pid: host
+    restart: unless-stopped
+    init: false
+    environment:
+      EMBED_IMAGE: ${EMBED_IMAGE:-ratio-embedder:local}
+      POSTGRES_IMAGE: ${POSTGRES_IMAGE:-postgres:16-alpine}
+      UI_PORT: ${UI_PORT:-8766}
+      KIT_ROOT: /opt/kit
+      BENCH_ROOT: /opt/bench
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./data:/opt/bench/data
+      - ./calibration.yaml:/opt/kit/calibration.yaml:ro
+      - ./calibration:/opt/kit/calibration:ro
+  # Built and pulled with the kit, started by the run (one per embedding pool).
+  embedder:
+    image: ${EMBED_IMAGE:-ratio-embedder:local}
+    build: ./embedder
+    pull_policy: missing
+    profiles: ["images"]

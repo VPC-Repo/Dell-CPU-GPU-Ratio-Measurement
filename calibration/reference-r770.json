@@ -1,0 +1,138 @@
+{
+ "note": "Published results of record for the PowerEdge R770, shown as the comparison row. Source: the Right Size Agentic AI white paper.",
+ "system": "PowerEdge R770",
+ "processors": "2 x Intel Xeon 6787P",
+ "sockets": 2,
+ "cores": 172,
+ "memoryInstalledGB": 2000,
+ "memoryGB": 871,
+ "allocation": {
+  "reranking": 12,
+  "queryEmbedding": 2,
+  "ingestEmbedding": 4,
+  "application": 154
+ },
+ "mix": "Enterprise",
+ "definitionVersion": "v2.3",
+ "workflowsPerSecond": 1.84,
+ "busyCores": 150.0,
+ "cpuPercent": 87,
+ "resident": 416,
+ "memoryPeakGB": 1170,
+ "outputTokensPerSecond": 12350,
+ "callsPerSecond": 18.3,
+ "coreMsPerOutputToken": 12.1,
+ "gpusPerServer": 3.07,
+ "serversPerGpuServer": 2.6,
+ "cpuToGpu": "2:3",
+ "serving": {
+  "model": "gpt-oss-20b",
+  "gpu": "RTX PRO 6000 Blackwell Server Edition",
+  "outputTokensPerSecondPerGpu": 4020
+ },
+ "cpuShares": {
+  "sandbox": 94.0,
+  "retrieval": 4.8,
+  "execution": 0.9,
+  "support": 0.3
+ },
+ "cpuBreakdown": [
+  {
+   "group": "Data analysis",
+   "piece": "Compare two periods (two passes)",
+   "share": 26.4
+  },
+  {
+   "group": "Data analysis",
+   "piece": "Profile events",
+   "share": 13.2
+  },
+  {
+   "group": "Data analysis",
+   "piece": "Prepare report data",
+   "share": 13.2
+  },
+  {
+   "group": "Builds and tests",
+   "piece": "CI: sanitizer build, static analysis, tests",
+   "share": 17.7
+  },
+  {
+   "group": "Builds and tests",
+   "piece": "Verify: rebuild changed files, rerun checks",
+   "share": 8.0
+  },
+  {
+   "group": "Builds and tests",
+   "piece": "Setup: build Lua and SQLite, run test suites",
+   "share": 6.7
+  },
+  {
+   "group": "Document intake",
+   "piece": "OCR intake: render, OCR, redact, chunk",
+   "share": 8.5
+  },
+  {
+   "group": "Document intake",
+   "piece": "Document embedding service",
+   "share": 1.7
+  },
+  {
+   "group": "Retrieval",
+   "piece": "Reranking service",
+   "share": 2.9
+  },
+  {
+   "group": "Retrieval",
+   "piece": "Query embedding service",
+   "share": 0.2
+  },
+  {
+   "group": "Research",
+   "piece": "Fetch and parse sources",
+   "share": 0.2
+  },
+  {
+   "group": "Agent runtime and services",
+   "piece": "Executors and control processes",
+   "share": 0.9
+  },
+  {
+   "group": "Agent runtime and services",
+   "piece": "Databases, container runtime, kernel",
+   "share": 0.3
+  }
+ ],
+ "agents": [
+  {
+   "name": "Task",
+   "coreSecondsPerWorkflow": 0.65,
+   "modelCalls": 4,
+   "outputTokens": 1390
+  },
+  {
+   "name": "Research",
+   "coreSecondsPerWorkflow": 7.8,
+   "modelCalls": 20,
+   "outputTokens": 16100
+  },
+  {
+   "name": "Ingestion",
+   "coreSecondsPerWorkflow": 78.0,
+   "modelCalls": 7,
+   "outputTokens": 3670
+  },
+  {
+   "name": "Analyst",
+   "coreSecondsPerWorkflow": 299.0,
+   "modelCalls": 17,
+   "outputTokens": 13460
+  },
+  {
+   "name": "Code",
+   "coreSecondsPerWorkflow": 137.0,
+   "modelCalls": 17,
+   "outputTokens": 12820
+  }
+ ]
+}
